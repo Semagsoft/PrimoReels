@@ -1,0 +1,109 @@
+cmake_minimum_required(VERSION 3.16)
+project(PrimoReels VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Multimedia QuickDialogs2)
+find_package(Threads REQUIRED)
+
+# Find FFmpeg packages (imported targets for robust include/link flags)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(AVCODEC REQUIRED IMPORTED_TARGET libavcodec)
+pkg_check_modules(AVFORMAT REQUIRED IMPORTED_TARGET libavformat)
+pkg_check_modules(AVUTIL REQUIRED IMPORTED_TARGET libavutil)
+pkg_check_modules(SWSCALE REQUIRED IMPORTED_TARGET libswscale)
+pkg_check_modules(SWRESAMPLE REQUIRED IMPORTED_TARGET libswresample)
+
+# Create library to share code between executable and tests
+add_library(PrimoReelsLib STATIC
+    src/TimelineEngine.cpp
+    src/ListModels.cpp
+    src/DecoderThread.cpp
+    src/PreloadThread.cpp
+    src/ExportThread.cpp
+    src/VideoEffects.cpp
+    src/MediaDecoder.cpp
+    src/FrameImageProvider.cpp
+    src/AudioPlayer.cpp
+    src/VideoFrameItem.cpp
+)
+
+target_compile_options(PrimoReelsLib PRIVATE -Wall -Wextra -Wpedantic)
+
+target_link_libraries(PrimoReelsLib PUBLIC
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Quick
+    Qt6::Multimedia
+    Qt6::QuickDialogs2
+    Threads::Threads
+    PkgConfig::AVCODEC
+    PkgConfig::AVFORMAT
+    PkgConfig::AVUTIL
+    PkgConfig::SWSCALE
+    PkgConfig::SWRESAMPLE
+)
+
+target_include_directories(PrimoReelsLib PUBLIC src)
+
+# Executable
+add_executable(PrimoReels src/main.cpp qml.qrc)
+target_compile_options(PrimoReels PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(PrimoReels PRIVATE PrimoReelsLib)
+
+# Install rules (reverse-DNS names per AppStream/Flathub convention:
+# desktop id must match <id> in metainfo.xml).
+include(GNUInstallDirs)
+install(TARGETS PrimoReels RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES packaging/io.github.primoreels.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES packaging/io.github.primoreels.svg
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+install(FILES packaging/io.github.primoreels.metainfo.xml
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+
+# Tests
+include(CTest)
+if(BUILD_TESTING)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_executable(PrimoReelsTests tests/TestTimelineEngine.cpp)
+    target_compile_options(PrimoReelsTests PRIVATE -Wall -Wextra -Wpedantic)
+    target_link_libraries(PrimoReelsTests PRIVATE PrimoReelsLib Qt6::Test)
+    add_test(NAME PrimoReelsTests COMMAND PrimoReelsTests)
+    set_tests_properties(PrimoReelsTests PROPERTIES TIMEOUT 120 LABELS "unit"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_MEDIA_BACKEND=dummy")
+    add_executable(ExportTests tests/TestExport.cpp)
+    target_compile_options(ExportTests PRIVATE -Wall -Wextra -Wpedantic)
+    target_link_libraries(ExportTests PRIVATE PrimoReelsLib Qt6::Test)
+    add_test(NAME ExportTests COMMAND ExportTests)
+    set_tests_properties(ExportTests PROPERTIES TIMEOUT 300 LABELS "integration"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_MEDIA_BACKEND=dummy")
+    add_executable(EffectTests tests/TestEffects.cpp)
+    target_compile_options(EffectTests PRIVATE -Wall -Wextra -Wpedantic)
+    target_link_libraries(EffectTests PRIVATE PrimoReelsLib Qt6::Test)
+    add_test(NAME EffectTests COMMAND EffectTests)
+    set_tests_properties(EffectTests PROPERTIES TIMEOUT 120 LABELS "unit"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_MEDIA_BACKEND=dummy")
+    add_executable(QmlLoadTests tests/TestQmlLoad.cpp qml.qrc)
+    target_compile_options(QmlLoadTests PRIVATE -Wall -Wextra -Wpedantic)
+    target_link_libraries(QmlLoadTests PRIVATE PrimoReelsLib Qt6::Test)
+    add_test(NAME QmlLoadTests COMMAND QmlLoadTests)
+    set_tests_properties(QmlLoadTests PROPERTIES TIMEOUT 120 LABELS "unit"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_MEDIA_BACKEND=dummy")
+endif()
+
+set(CPACK_PACKAGE_NAME "primoreels")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_VENDOR "PrimoReels")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Modern desktop video editor")
+set(CPACK_GENERATOR "TGZ;DEB")
+# Resolve .deb dependencies from linked libraries at pack time instead of
+# pinning FFmpeg SONAMEs (libavcodec60, ...), which break on FFmpeg 7 distros.
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+# Baseline Qt deps (shlibdeps appends FFmpeg + QuickDialogs2 SONAMEs at pack time).
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libqt6core6, libqt6gui6, libqt6quick6, libqt6multimedia6, libqt6quickdialogs2-6")
+include(CPack)

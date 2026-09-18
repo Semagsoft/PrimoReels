@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=PrimoReels
+GenericName=Video Editor
+Comment=Modern video editor built with Qt and FFmpeg
+TryExec=PrimoReels
+Exec=PrimoReels %U
+Icon=io.github.primoreels
+Categories=AudioVideo;Video;
+Keywords=video;editor;ffmpeg;qt;
+Terminal=false
+StartupNotify=true
+StartupWMClass=PrimoReels
+SingleMainWindow=true
+MimeType=video/mp4;video/x-matroska;video/quicktime;video/x-msvideo;video/webm;

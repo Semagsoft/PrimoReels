@@ -1,0 +1,11 @@
+<RCC>
+    <qresource prefix="/">
+        <file>qml/Main.qml</file>
+        <file>qml/TimelineView.qml</file>
+        <file>qml/SourceMonitorView.qml</file>
+        <file>qml/MonitorView.qml</file>
+        <file>qml/LibraryView.qml</file>
+        <file>qml/InspectorView.qml</file>
+        <file>qml/TimeUtils.js</file>
+    </qresource>
+</RCC>

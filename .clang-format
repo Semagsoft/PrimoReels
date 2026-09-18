@@ -1,0 +1,6 @@
+BasedOnStyle: Chromium
+ColumnLimit: 100
+DerivePointerAlignment: false
+PointerAlignment: Left
+SortIncludes: CaseSensitive
+AllowShortFunctionsOnASingleLine: Inline

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.primoreels</id>
+  <name>PrimoReels</name>
+  <summary>Modern desktop video editor built with Qt and FFmpeg</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.primoreels">
+    <name>PrimoReels contributors</name>
+  </developer>
+  <url type="homepage">https://github.com/anomalyco/opencode</url>
+  <url type="bugtracker">https://github.com/anomalyco/opencode/issues</url>
+  <releases>
+    <release version="0.1.0" date="2026-09-01">
+      <description>
+        <p>Initial editor: bin/library, V1+V2 timeline, monitor, effects, transitions, MP4 export, *.reels.json projects.</p>
+      </description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-cartoon">none</content_attribute>
+    <content_attribute id="violence-fantasy">none</content_attribute>
+    <content_attribute id="violence-realistic">none</content_attribute>
+    <content_attribute id="violence-bloodshed">none</content_attribute>
+    <content_attribute id="violence-sexual">none</content_attribute>
+    <content_attribute id="drugs-alcohol">none</content_attribute>
+    <content_attribute id="drugs-narcotics">none</content_attribute>
+    <content_attribute id="drugs-tobacco">none</content_attribute>
+    <content_attribute id="sex-nudity">none</content_attribute>
+    <content_attribute id="sex-themes">none</content_attribute>
+    <content_attribute id="sex-homosexuality">none</content_attribute>
+    <content_attribute id="language-profanity">none</content_attribute>
+    <content_attribute id="language-humor">none</content_attribute>
+    <content_attribute id="language-discrimination">none</content_attribute>
+    <content_attribute id="social-chat">none</content_attribute>
+    <content_attribute id="social-info">none</content_attribute>
+    <content_attribute id="social-audio">none</content_attribute>
+    <content_attribute id="social-location">none</content_attribute>
+    <content_attribute id="money-purchasing">none</content_attribute>
+    <content_attribute id="money-gambling">none</content_attribute>
+  </content_rating>
+  <description>
+    <p>PrimoReels is a desktop video editor with project bin, timeline, monitor, effects, transitions, and MP4 export.</p>
+  </description>
+  <launchable type="desktop-id">io.github.primoreels.desktop</launchable>
+  <provides>
+    <binary>PrimoReels</binary>
+  </provides>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+  </categories>
+</component>

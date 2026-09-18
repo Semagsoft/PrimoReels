@@ -1,0 +1,206 @@
+name: Build and Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install FFmpeg dev packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libavcodec-dev libavformat-dev libavutil-dev \
+            libswscale-dev libswresample-dev \
+            ffmpeg desktop-file-utils
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.2"
+          modules: qtmultimedia
+          cache: true
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Validate desktop entry
+        run: desktop-file-validate packaging/io.github.primoreels.desktop
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_MEDIA_BACKEND: dummy
+        run: ctest --test-dir build --output-on-failure -j2
+
+      - name: Install check
+        run: |
+          cmake --install build --prefix /tmp/stage
+          test -x /tmp/stage/bin/PrimoReels
+          test -f /tmp/stage/share/applications/io.github.primoreels.desktop
+          test -f /tmp/stage/share/metainfo/io.github.primoreels.metainfo.xml
+          test -f /tmp/stage/share/icons/hicolor/scalable/apps/io.github.primoreels.svg
+          grep -q "launchable.*io.github.primoreels.desktop" packaging/io.github.primoreels.metainfo.xml
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-logs
+          path: build/Testing/Temporary/LastTest.log
+
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    concurrency:
+      group: ${{ github.workflow }}-lint-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt (for qmllint)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.2"
+          modules: qtmultimedia
+          cache: true
+
+      - name: QML lint
+        run: |
+          qmllint qml/Main.qml qml/TimelineView.qml qml/MonitorView.qml \
+            qml/LibraryView.qml qml/SourceMonitorView.qml qml/InspectorView.qml
+
+      - name: C++ format check
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+          clang-format --dry-run --Werror src/*.cpp src/*.h tests/*.cpp
+
+      - name: Validate packaging metadata
+        run: |
+          sudo apt-get install -y appstream desktop-file-utils
+          desktop-file-validate packaging/io.github.primoreels.desktop
+          appstreamcli validate --no-net packaging/io.github.primoreels.metainfo.xml
+
+  sanitize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    concurrency:
+      group: ${{ github.workflow }}-sanitize-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install FFmpeg dev packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libavcodec-dev libavformat-dev libavutil-dev \
+            libswscale-dev libswresample-dev \
+            ffmpeg
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.2"
+          modules: qtmultimedia
+          cache: true
+
+      - name: Configure with sanitizers
+        run: >
+          cmake -S . -B build-san
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+
+      - name: Build
+        run: cmake --build build-san --parallel
+
+      - name: Test under sanitizers
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_MEDIA_BACKEND: dummy
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: ctest --test-dir build-san --output-on-failure -j2
+
+  tsan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    concurrency:
+      group: ${{ github.workflow }}-tsan-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install FFmpeg dev packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libavcodec-dev libavformat-dev libavutil-dev \
+            libswscale-dev libswresample-dev \
+            ffmpeg
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.2"
+          modules: qtmultimedia
+          cache: true
+
+      - name: Configure with ThreadSanitizer
+        run: >
+          cmake -S . -B build-tsan
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g"
+          -DCMAKE_C_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+          -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=thread"
+
+      - name: Build
+        run: cmake --build build-tsan --parallel
+
+      - name: Test under ThreadSanitizer
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_MEDIA_BACKEND: dummy
+          # System Qt is not TSan-instrumented, so Qt-internal races
+          # (QDBusConnection, sendPostedEvents, ...) are expected noise.
+          # halt_on_error=0 lets the suite finish; the next step fails only
+          # on races whose stacks mention PrimoReels sources.
+          TSAN_OPTIONS: halt_on_error=0:second_deadlock_stack=1
+        run: ctest --test-dir build-tsan --output-on-failure -j2 2>&1 | tee tsan.log
+
+      - name: Fail on races in PrimoReels sources
+        run: |
+          if grep -A40 "ThreadSanitizer" tsan.log | grep -E "TimelineEngine|DecoderThread|PreloadThread|ExportThread|MediaDecoder|VideoEffects|ListModels|FrameImageProvider|AudioPlayer|TestTimeline|TestExport|TestEffects|TestQml"; then
+            echo "ThreadSanitizer race in PrimoReels sources (see tsan.log)"
+            exit 1
+          else
+            echo "No ThreadSanitizer races in PrimoReels sources."
+          fi
+
+      - name: Upload TSan log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsan-log
+          path: tsan.log
