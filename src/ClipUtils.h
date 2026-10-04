@@ -96,6 +96,12 @@ inline QString clipEffect(const QVariantMap& clip) {
   return clip.value(QStringLiteral("effect")).toString();
 }
 
+// Known transition types (single source of truth for engine + export +
+// project-file validation).
+inline bool isKnownTransition(const QString& type) {
+  return type == QLatin1String("Cross Dissolve") || type == QLatin1String("Dip to Black");
+}
+
 inline QString clipTransition(const QVariantMap& clip) {
   return clip.value(QStringLiteral("transition")).toString();
 }

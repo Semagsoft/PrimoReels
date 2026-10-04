@@ -22,6 +22,7 @@ pkg_check_modules(SWRESAMPLE REQUIRED IMPORTED_TARGET libswresample)
 # Create library to share code between executable and tests
 add_library(PrimoReelsLib STATIC
     src/TimelineEngine.cpp
+    src/ProjectFile.cpp
     src/ListModels.cpp
     src/DecoderThread.cpp
     src/PreloadThread.cpp

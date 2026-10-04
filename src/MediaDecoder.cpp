@@ -89,7 +89,8 @@ bool MediaDecoder::open(const QString& filePath) {
   AVBufferRef* hwDeviceCtx = nullptr;
   if (av_hwdevice_ctx_create(&hwDeviceCtx, AV_HWDEVICE_TYPE_VAAPI, nullptr, nullptr, 0) >= 0) {
     m_codecContext->hw_device_ctx = hwDeviceCtx;
-    m_codecContext->get_format = [](AVCodecContext* ctx, const enum AVPixelFormat* pix_fmts) -> enum AVPixelFormat {
+    m_codecContext->get_format =
+        [](AVCodecContext * ctx, const enum AVPixelFormat* pix_fmts)->enum AVPixelFormat {
       for (const enum AVPixelFormat* p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
         if (*p == AV_PIX_FMT_VAAPI) {
           return *p;
@@ -426,8 +427,8 @@ QImage MediaDecoder::convertFrame(const AVFrame* frame) const {
   uint8_t* destData[4] = {image.bits(), nullptr, nullptr, nullptr};
   int destLinesize[4] = {static_cast<int>(image.bytesPerLine()), 0, 0, 0};
 
-  const int converted =
-      sws_scale(m_swsContext.get(), srcFrame->data, srcFrame->linesize, 0, srcH, destData, destLinesize);
+  const int converted = sws_scale(m_swsContext.get(), srcFrame->data, srcFrame->linesize, 0, srcH,
+                                  destData, destLinesize);
 
   if (converted <= 0) {
     return {};
@@ -672,12 +673,12 @@ QByteArray MediaDecoder::resampleAudioFrame(const AVFrame* frame) {
       swr_convert(m_swrContext.get(), dstData, outSamples, frame->data, frame->nb_samples);
   if (converted > 0) {
     out = QByteArray(reinterpret_cast<const char*>(dstData[0]),
-                     converted * audioChannelCount() * static_cast<int>(sizeof(int16_t)));
+                     static_cast<qsizetype>(converted) * audioChannelCount() * static_cast<int>(sizeof(int16_t)));
   }
 
   if (dstData) {
-    av_freep(&dstData[0]);
-    av_freep(&dstData);
+    av_freep(reinterpret_cast<void*>(&dstData[0]));
+    av_freep(reinterpret_cast<void*>(&dstData));
   }
   return out;
 }

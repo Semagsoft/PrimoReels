@@ -16,6 +16,7 @@
 #include "ExportThread.h"
 #include "ListModels.h"
 #include "PreloadThread.h"
+#include "ProjectHistory.h"
 
 class TimelineEngine : public QObject {
   Q_OBJECT
@@ -144,8 +145,8 @@ class TimelineEngine : public QObject {
   double exportProgress() const { return m_exportProgress; }
   Q_INVOKABLE void exportSequence(const QString& filePath);
   Q_INVOKABLE void cancelExport();
-  bool canUndo() const { return !m_undoStack.isEmpty(); }
-  bool canRedo() const { return !m_redoStack.isEmpty(); }
+  bool canUndo() const { return m_history.canUndo(); }
+  bool canRedo() const { return m_history.canRedo(); }
   bool isModified() const { return m_modified; }
   Q_INVOKABLE void undo();
   Q_INVOKABLE void redo();
@@ -342,17 +343,8 @@ class TimelineEngine : public QObject {
   void pushHistory();
   void applySnapshot(const ListSnapshot& snapshot);
   void setModified(bool modified);
-  static constexpr int kHistoryLimit = 200;
-  // Project-file load guards (robustness): legit projects are kilobytes;
-  // these bound GUI-thread parse work and downstream list math.
-  static constexpr qint64 kMaxProjectBytes = 32 * 1024 * 1024;
-  static constexpr int kMaxProjectMediaEntries = 20000;
-  static constexpr int kMaxProjectTimelineClips = 10000;
-  // Longest single media duration accepted anywhere (also bounds timestamp
-  // rescaling, waveform buckets, and timeline cursor math).
-  static constexpr double kMaxMediaSeconds = 86400.0;
-  QVector<ListSnapshot> m_undoStack;
-  QVector<ListSnapshot> m_redoStack;
+  ListSnapshot captureSnapshot() const;
+  ProjectHistory<ListSnapshot> m_history;
   bool m_modified = false;
   // Bin thumbnail cache (bounded, LRU-ish via insertion order).
   static constexpr int kThumbCacheLimit = 200;

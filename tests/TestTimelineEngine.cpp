@@ -68,7 +68,7 @@ bool makeAudioVideoClip(const QString& path) {
 
 // Constant-value stereo s16 PCM chunk (frames = stereo sample frames).
 QByteArray makeConstChunk(int frames, qint16 value) {
-  QByteArray chunk(frames * 4, 0);
+  QByteArray chunk(static_cast<qsizetype>(frames) * 4, 0);
   auto* s = reinterpret_cast<qint16*>(chunk.data());
   for (int i = 0; i < frames * 2; ++i) {
     s[i] = value;
@@ -107,7 +107,7 @@ double toneEnergy(const QByteArray& pcm, int fromFrame, int frames, double freq)
   const double coeff = 2.0 * std::cos(w);
   double q0 = 0.0, q1 = 0.0, q2 = 0.0;
   for (int i = 0; i < n; ++i) {
-    q0 = coeff * q1 - q2 + s[(fromFrame + i) * 2];
+    q0 = coeff * q1 - q2 + s[static_cast<ptrdiff_t>(fromFrame + i) * 2];
     q2 = q1;
     q1 = q0;
   }
@@ -1577,7 +1577,7 @@ class TestTimelineEngine : public QObject {
     QFile f(big);
     QVERIFY(f.open(QIODevice::WriteOnly));
     // 33 MiB of junk: past the 32 MiB GUI-thread parse cap.
-    QVERIFY(f.write(QByteArray(33 * 1024 * 1024, 'x')) == 33 * 1024 * 1024);
+    QVERIFY(f.write(QByteArray(33LL * 1024 * 1024, 'x')) == 33LL * 1024 * 1024);
     f.close();
     QSignalSpy failedSpy(&engine, &TimelineEngine::failed);
     QVERIFY(!engine.loadProject(big));

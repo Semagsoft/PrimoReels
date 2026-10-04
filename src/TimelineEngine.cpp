@@ -3,18 +3,14 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QEventLoop>
-#include <QFile>
 #include <QFileInfo>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonParseError>
 #include <QMutexLocker>
-#include <QSaveFile>
 #include <QTimer>
 #include <QUrl>
 #include <algorithm>
 #include "ClipUtils.h"
+#include "ProjectFile.h"
+#include "ProjectHistory.h"
 #include "VideoEffects.h"
 
 TimelineEngine::TimelineEngine(QObject* parent) : QObject(parent) {
@@ -599,42 +595,17 @@ void TimelineEngine::onExportWarning(const QString& message) {
 }
 
 bool TimelineEngine::saveProject(const QString& filePath) {
-  const QString path = ClipUtils::normalizedMediaPath(filePath);
-  if (path.isEmpty()) {
-    emit failed(QStringLiteral("Cannot save project: empty file path."));
-    return false;
-  }
-  QJsonObject root;
-  root.insert(QStringLiteral("version"), 1);
-  root.insert(QStringLiteral("mediaList"), QJsonArray::fromVariantList(m_mediaList));
-  root.insert(QStringLiteral("timelineClips"), QJsonArray::fromVariantList(m_timelineClips));
-  root.insert(QStringLiteral("volume"), m_volume);
-  root.insert(QStringLiteral("clipScaleX"), m_clipScaleX);
-  root.insert(QStringLiteral("clipScaleY"), m_clipScaleY);
-  root.insert(QStringLiteral("clipRotation"), m_clipRotation);
-  root.insert(QStringLiteral("currentSource"), m_currentSource);
-
-  // Atomic save via QSaveFile: writes to a temp sibling and renames over
-  // the target on commit, so a crash/power loss or a failed write can never
-  // destroy the previous project — the original stays intact on failure.
-  const QByteArray payload = QJsonDocument(root).toJson(QJsonDocument::Indented);
-  QSaveFile file(path);
-  // QSaveFile::open fails (e.g. unwritable destination) without touching
-  // the existing file.
-  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-    emit failed(QStringLiteral("Cannot save project to %1: %2").arg(path, file.errorString()));
-    return false;
-  }
-  if (file.write(payload) != payload.size()) {
-    const QString err = file.errorString();
-    file.cancelWriting();
-    emit failed(QStringLiteral("Cannot save project to %1: %2").arg(path, err));
-    return false;
-  }
-  // commit() atomically replaces the target; on failure the original file
-  // is preserved and QSaveFile cleans up its temp file.
-  if (!file.commit()) {
-    emit failed(QStringLiteral("Cannot save project to %1: %2").arg(path, file.errorString()));
+  ProjectFile::Data data;
+  data.mediaList = m_mediaList;
+  data.timelineClips = m_timelineClips;
+  data.volume = m_volume;
+  data.clipScaleX = m_clipScaleX;
+  data.clipScaleY = m_clipScaleY;
+  data.clipRotation = m_clipRotation;
+  data.currentSource = m_currentSource;
+  QString error;
+  if (!ProjectFile::save(filePath, data, &error)) {
+    emit failed(error);
     return false;
   }
   setModified(false);
@@ -642,47 +613,17 @@ bool TimelineEngine::saveProject(const QString& filePath) {
 }
 
 bool TimelineEngine::loadProject(const QString& filePath) {
-  const QString path = ClipUtils::normalizedMediaPath(filePath);
-  if (path.isEmpty()) {
-    emit failed(QStringLiteral("Cannot open project: empty file path."));
-    return false;
-  }
-  QFile file(path);
-  if (!file.open(QIODevice::ReadOnly)) {
-    emit failed(QStringLiteral("Cannot open project %1: %2").arg(path, file.errorString()));
-    return false;
-  }
-  if (file.size() > kMaxProjectBytes) {
-    emit failed(QStringLiteral("Cannot open project %1: file too large (%2 bytes).")
-                    .arg(path, QString::number(file.size())));
-    return false;
-  }
-  QJsonParseError parseError;
-  const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
-  if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-    emit failed(QStringLiteral("Cannot open project %1: invalid project file (%2).")
-                    .arg(path, parseError.errorString()));
-    return false;
-  }
-  const QJsonObject root = doc.object();
-  if (!root.value(QStringLiteral("mediaList")).isArray() ||
-      !root.value(QStringLiteral("timelineClips")).isArray()) {
-    emit failed(
-        QStringLiteral("Cannot open project %1: missing media or timeline data.").arg(path));
-    return false;
-  }
-  const QJsonArray mediaArray = root.value(QStringLiteral("mediaList")).toArray();
-  const QJsonArray clipsArray = root.value(QStringLiteral("timelineClips")).toArray();
-  if (mediaArray.size() > kMaxProjectMediaEntries || clipsArray.size() > kMaxProjectTimelineClips) {
-    emit failed(
-        QStringLiteral("Cannot open project %1: too many entries (%2 media, %3 clips).")
-            .arg(path, QString::number(mediaArray.size()), QString::number(clipsArray.size())));
-    return false;
-  }
-  if (root.value(QStringLiteral("version")).toInt(-1) != 1) {
-    emit failed(
-        QStringLiteral("Cannot open project %1: unsupported version %2.")
-            .arg(path, root.value(QStringLiteral("version")).toVariant().toString().left(64)));
+  // Seed defaults from current state so a missing optional key (older
+  // files) keeps the current playback-adjacent settings, matching the
+  // previous inline implementation.
+  ProjectFile::Data data;
+  data.volume = m_volume;
+  data.clipScaleX = m_clipScaleX;
+  data.clipScaleY = m_clipScaleY;
+  data.clipRotation = m_clipRotation;
+  QString error;
+  if (!ProjectFile::load(filePath, &data, &error)) {
+    emit failed(error);
     return false;
   }
 
@@ -691,127 +632,26 @@ bool TimelineEngine::loadProject(const QString& filePath) {
   stopSequence();
   pause();
   stopBed();
-  // Validate media rows like timeline clips below: crafted types must not
-  // reach models/threads/QML as 0-second placeholder ghosts.
-  QVariantList mediaList;
-  mediaList.reserve(mediaArray.size());
-  for (const QJsonValue& v : mediaArray) {
-    if (!v.isObject()) {
-      continue;
-    }
-    QVariantMap entry = v.toObject().toVariantMap();
-    const QString entryPath = entry.value(QStringLiteral("path")).toString();
-    if (entryPath.isEmpty() || entryPath.size() > ClipUtils::kMaxPathChars) {
-      continue;
-    }
-    const QVariant durVar = entry.value(QStringLiteral("duration"), 0.0);
-    double entryDur = 0.0;
-    if (durVar.typeId() == QMetaType::Double || durVar.typeId() == QMetaType::Float ||
-        durVar.typeId() == QMetaType::Int || durVar.typeId() == QMetaType::UInt ||
-        durVar.typeId() == QMetaType::LongLong || durVar.typeId() == QMetaType::ULongLong) {
-      entryDur = durVar.toDouble();
-    }
-    if (!ClipUtils::isFiniteDouble(entryDur) || entryDur < 0.0) {
-      continue;
-    }
-    entry.insert(QStringLiteral("path"), entryPath);
-    entry.insert(QStringLiteral("duration"), std::min(entryDur, kMaxMediaSeconds));
-    if (!entry.contains(QStringLiteral("name")) ||
-        entry.value(QStringLiteral("name")).toString().isEmpty()) {
-      entry.insert(QStringLiteral("name"), QFileInfo(entryPath).fileName());
-    } else {
-      entry.insert(QStringLiteral("name"),
-                   entry.value(QStringLiteral("name")).toString().left(256));
-    }
-    mediaList.append(entry);
-  }
-  // Normalize + validate clips (older files predate keys; hand-edited files
-  // may carry garbage). Clips with an empty path are dropped.
-  QVariantList validated;
-  validated.reserve(clipsArray.size());
-  for (const QJsonValue& v : clipsArray) {
-    QVariantMap clip = v.isObject() ? v.toObject().toVariantMap() : QVariantMap();
-    const QString clipPath = clip.value(QStringLiteral("path")).toString();
-    if (clipPath.isEmpty() || clipPath.size() > ClipUtils::kMaxPathChars) {
-      continue;
-    }
-    double sourceDur = clip.value(QStringLiteral("sourceDuration"), -1.0).toDouble();
-    double dur = clip.value(QStringLiteral("duration"), 0.0).toDouble();
-    if (!ClipUtils::isFiniteDouble(sourceDur) || !ClipUtils::isFiniteDouble(dur)) {
-      continue;
-    }
-    if (!(sourceDur > 0.0)) {
-      sourceDur = (dur > 0.0) ? dur : 0.0;
-    }
-    sourceDur = std::clamp(sourceDur, 0.0, kMaxMediaSeconds);
-    double trimStart = std::clamp(clip.value(QStringLiteral("trimStart"), 0.0).toDouble(), 0.0,
-                                  std::max(0.0, sourceDur - 0.1));
-    double trimEnd = std::clamp(clip.value(QStringLiteral("trimEnd"), 0.0).toDouble(), 0.0,
-                                std::max(0.0, sourceDur - trimStart - 0.1));
-    dur = std::max(0.1, sourceDur - trimStart - trimEnd);
-    clip.insert(QStringLiteral("sourceDuration"), sourceDur);
-    clip.insert(QStringLiteral("trimStart"), trimStart);
-    clip.insert(QStringLiteral("trimEnd"), trimEnd);
-    clip.insert(QStringLiteral("duration"), dur);
-    const QString effect = clip.value(QStringLiteral("effect")).toString();
-    clip.insert(QStringLiteral("effect"), VideoEffects::isKnownEffect(effect) ? effect : QString());
-    const QString transition = clip.value(QStringLiteral("transition")).toString();
-    if (!isKnownTransition(transition)) {
-      clip.insert(QStringLiteral("transition"), QString());
-      clip.insert(QStringLiteral("transitionDuration"), 0.5);
-    } else {
-      clip.insert(QStringLiteral("transitionDuration"),
-                  std::clamp(clip.value(QStringLiteral("transitionDuration"), 0.5).toDouble(), 0.1,
-                             std::max(0.1, std::min(2.0, dur))));
-    }
-    clip.insert(QStringLiteral("track"),
-                std::clamp(clip.value(QStringLiteral("track"), 0).toInt(), 0, 2));
-    clip.insert(QStringLiteral("gain"),
-                std::clamp(clip.value(QStringLiteral("gain"), 1.0).toDouble(), 0.0, 2.0));
-    clip.insert(QStringLiteral("muted"), clip.value(QStringLiteral("muted"), false).toBool());
-    clip.insert(QStringLiteral("fadeIn"),
-                std::clamp(clip.value(QStringLiteral("fadeIn"), 0.0).toDouble(), 0.0, 30.0));
-    clip.insert(QStringLiteral("fadeOut"),
-                std::clamp(clip.value(QStringLiteral("fadeOut"), 0.0).toDouble(), 0.0, 30.0));
-    clip.insert(QStringLiteral("title"), clip.value(QStringLiteral("title")).toString().left(200));
-    if (!clip.contains(QStringLiteral("name")) ||
-        clip.value(QStringLiteral("name")).toString().isEmpty()) {
-      clip.insert(QStringLiteral("name"), QFileInfo(clipPath).fileName());
-    } else {
-      clip.insert(QStringLiteral("name"), clip.value(QStringLiteral("name")).toString().left(256));
-    }
-    if (clip.value(QStringLiteral("track"), 0).toInt() != 1 &&
-        clip.value(QStringLiteral("track"), 0).toInt() != 2) {
-      clip.insert(QStringLiteral("startTime"), 0.0);  // recomputed below
-    } else {
-      const double overlayStart = clip.value(QStringLiteral("startTime"), 0.0).toDouble();
-      clip.insert(QStringLiteral("startTime"), ClipUtils::isFiniteDouble(overlayStart)
-                                                   ? std::clamp(overlayStart, 0.0, kMaxMediaSeconds)
-                                                   : 0.0);
-    }
-    validated.append(clip);
-  }
   // Commit only after validation: a load that drops rows must not burn an
   // undo slot or dirty flag on partial state.
   pushHistory();
-  m_mediaList = mediaList;
+  m_mediaList = data.mediaList;
   syncModels();
   emit mediaListChanged();
-  m_timelineClips = validated;
+  m_timelineClips = data.timelineClips;
   recomputeTimelineStarts();
   syncModels();
   emit timelineClipsChanged();
 
-  setVolume(root.value(QStringLiteral("volume")).toDouble(m_volume));
-  setClipScaleX(root.value(QStringLiteral("clipScaleX")).toDouble(m_clipScaleX));
-  setClipScaleY(root.value(QStringLiteral("clipScaleY")).toDouble(m_clipScaleY));
-  setClipRotation(root.value(QStringLiteral("clipRotation")).toDouble(m_clipRotation));
+  setVolume(data.volume);
+  setClipScaleX(data.clipScaleX);
+  setClipScaleY(data.clipScaleY);
+  setClipRotation(data.clipRotation);
 
   // Only auto-load a source that belongs to this project: a crafted file
   // must not trigger decoder opens of arbitrary paths.
-  const QString source = root.value(QStringLiteral("currentSource")).toString();
-  if (!source.isEmpty()) {
-    const QString normalized = ClipUtils::normalizedMediaPath(source);
+  if (!data.currentSource.isEmpty()) {
+    const QString normalized = ClipUtils::normalizedMediaPath(data.currentSource);
     if (isPathInProject(normalized)) {
       m_loadingSource = true;
       loadMedia(normalized);
@@ -1060,6 +900,12 @@ void TimelineEngine::syncModels() {
 }
 
 void TimelineEngine::pushHistory() {
+  m_history.push(captureSnapshot());
+  emit historyChanged();
+  setModified(true);
+}
+
+TimelineEngine::ListSnapshot TimelineEngine::captureSnapshot() const {
   ListSnapshot snapshot;
   snapshot.mediaList = m_mediaList;
   snapshot.timelineClips = m_timelineClips;
@@ -1072,15 +918,7 @@ void TimelineEngine::pushHistory() {
     QMutexLocker locker(&m_dataMutex);
     snapshot.activeEffect = m_activeEffect;
   }
-  m_undoStack.append(snapshot);
-  while (m_undoStack.size() > kHistoryLimit) {
-    m_undoStack.removeFirst();
-  }
-  if (!m_redoStack.isEmpty()) {
-    m_redoStack.clear();
-  }
-  emit historyChanged();
-  setModified(true);
+  return snapshot;
 }
 
 void TimelineEngine::applySnapshot(const ListSnapshot& snapshot) {
@@ -1137,50 +975,26 @@ void TimelineEngine::setModified(bool modified) {
 }
 
 void TimelineEngine::undo() {
-  if (m_undoStack.isEmpty()) {
+  if (!m_history.canUndo()) {
     return;
   }
   setSequenceState(false, -1);
   m_sequenceAutoplay = false;
-  ListSnapshot current;
-  current.mediaList = m_mediaList;
-  current.timelineClips = m_timelineClips;
-  current.volume = m_volume;
-  current.clipScaleX = m_clipScaleX;
-  current.clipScaleY = m_clipScaleY;
-  current.clipRotation = m_clipRotation;
-  current.currentSource = m_currentSource;
-  {
-    QMutexLocker locker(&m_dataMutex);
-    current.activeEffect = m_activeEffect;
-  }
-  m_redoStack.append(current);
-  const ListSnapshot snapshot = m_undoStack.takeLast();
+  ListSnapshot snapshot;
+  m_history.undo(captureSnapshot(), &snapshot);
   applySnapshot(snapshot);
   setModified(true);
   emit historyChanged();
 }
 
 void TimelineEngine::redo() {
-  if (m_redoStack.isEmpty()) {
+  if (!m_history.canRedo()) {
     return;
   }
   setSequenceState(false, -1);
   m_sequenceAutoplay = false;
-  ListSnapshot current;
-  current.mediaList = m_mediaList;
-  current.timelineClips = m_timelineClips;
-  current.volume = m_volume;
-  current.clipScaleX = m_clipScaleX;
-  current.clipScaleY = m_clipScaleY;
-  current.clipRotation = m_clipRotation;
-  current.currentSource = m_currentSource;
-  {
-    QMutexLocker locker(&m_dataMutex);
-    current.activeEffect = m_activeEffect;
-  }
-  m_undoStack.append(current);
-  const ListSnapshot snapshot = m_redoStack.takeLast();
+  ListSnapshot snapshot;
+  m_history.redo(captureSnapshot(), &snapshot);
   applySnapshot(snapshot);
   setModified(true);
   emit historyChanged();
@@ -1583,7 +1397,7 @@ namespace {
 
 // Whole sample frames (stereo s16) in a PCM chunk.
 int previewChunkFrames(const QByteArray& chunk) {
-  return static_cast<int>(chunk.size() / (2 * static_cast<int>(sizeof(qint16))));
+  return static_cast<int>(chunk.size() / (2LL * static_cast<int>(sizeof(qint16))));
 }
 
 }  // namespace
@@ -1629,7 +1443,7 @@ void TimelineEngine::tryFlushAudioStages() {
 }
 
 bool TimelineEngine::isKnownTransition(const QString& type) {
-  return type == QLatin1String("Cross Dissolve") || type == QLatin1String("Dip to Black");
+  return ClipUtils::isKnownTransition(type);
 }
 
 QStringList TimelineEngine::availableEffects() const {

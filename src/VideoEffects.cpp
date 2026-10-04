@@ -182,7 +182,7 @@ QImage VideoEffects::vignette(const QImage& frame) {
   int lut[kLutN + 1];
   for (int i = 0; i <= kLutN; ++i) {
     const double d2 = i / static_cast<double>(kLutN);
-    lut[i] = static_cast<int>(std::max(0.45, 1.0 - 0.75 * d2) * 256.0 + 0.5);
+    lut[i] = static_cast<int>(std::lround(std::max(0.45, 1.0 - 0.75 * d2) * 256.0));
   }
   QImage dst(frame.size(), QImage::Format_RGB32);
   for (int y = 0; y < h; ++y) {
@@ -195,7 +195,7 @@ QImage VideoEffects::vignette(const QImage& frame) {
       if (d2 > 1.0) {
         d2 = 1.0;
       }
-      const int f = lut[static_cast<int>(d2 * kLutN + 0.5)];
+      const int f = lut[static_cast<int>(std::lround(d2 * kLutN))];
       out[x] = qRgb((qRed(src[x]) * f) >> 8, (qGreen(src[x]) * f) >> 8, (qBlue(src[x]) * f) >> 8);
     }
   }

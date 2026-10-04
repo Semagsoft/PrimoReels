@@ -73,6 +73,9 @@ Rules:
   (excluded from total/progress) and reported via `exportWarning`.
 - **Edits:** list mutations push undo snapshots (`mediaList` +
   `timelineClips` + volume/transform/source/effect, 200 deep) and call `syncModels()` so the
+  undo/redo stack mechanics live in `src/ProjectHistory.h` (`ProjectHistory<T>`),
+  and project `*.reels.json` load/save with all validation/sanitization lives
+  in `src/ProjectFile.{h,cpp}`.
   `QAbstractListModel` views (`mediaModel`, `timelineModel`,
   `mediaFilterModel`) stay in sync. See `src/ListModels.*`.
 - **Shared clip accessors:** `src/ClipUtils.h` (path/duration/trims/effect/

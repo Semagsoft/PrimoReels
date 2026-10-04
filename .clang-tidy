@@ -1,0 +1,3 @@
+Checks: 'bugprone-*,cert-*,performance-*,-cert-dcl50-cpp,-bugprone-easily-swappable-parameters,-bugprone-narrowing-conversions,-bugprone-misplaced-widening-cast,-clang-diagnostic-variadic-macro-arguments-omitted'
+WarningsAsErrors: 'bugprone-*,cert-*,performance-*'
+HeaderFilterRegex: '^(src|tests)/'
