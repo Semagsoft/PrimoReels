@@ -71,8 +71,9 @@ install(FILES packaging/io.github.primoreels.metainfo.xml
 # PRIMOREELS_TESTS_ISOLATE_FUNCTIONS=ON, otherwise a single ctest that runs
 # the whole binary. Isolation matters under TSan: joining a finished QThread
 # corrupts this system's TSan thread registry (CHECK failed:
-# sanitizer_thread_registry.cpp), killing the process mid-suite and being
-# masked by TSAN exitcode=0 — see the tsan job in .github/workflows.
+# sanitizer_thread_registry.cpp), killing the process mid-suite — and with
+# TSAN exitcode=0 that death exits 0, so every test additionally requires
+# PASS_REGULAR_EXPRESSION "Totals:" to turn a killed suite into a failure.
 function(primoreels_add_test NAME TARGET TIMEOUT LABELS)
     if(PRIMOREELS_TESTS_ISOLATE_FUNCTIONS)
         foreach(fn ${ARGN})

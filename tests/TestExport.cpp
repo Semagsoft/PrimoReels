@@ -321,7 +321,9 @@ class TestExport : public QObject {
 
   void exportSequence_mixesA1Bed() {
 #ifdef PRIMOREELS_TSAN
-    QSKIP("skipped under TSan: recreating engines in one process trips the TSan thread-registry CHECK on this platform");
+    QSKIP(
+        "skipped under TSan: recreating engines in one process trips the TSan thread-registry "
+        "CHECK on this platform");
 #endif
     if (QStandardPaths::findExecutable("ffmpeg").isEmpty() ||
         QStandardPaths::findExecutable("ffprobe").isEmpty()) {
@@ -379,7 +381,9 @@ class TestExport : public QObject {
 
   void exportSequence_appliesGainMuteAndVolume() {
 #ifdef PRIMOREELS_TSAN
-    QSKIP("skipped under TSan: recreating engines in one process trips the TSan thread-registry CHECK on this platform");
+    QSKIP(
+        "skipped under TSan: recreating engines in one process trips the TSan thread-registry "
+        "CHECK on this platform");
 #endif
     if (QStandardPaths::findExecutable("ffmpeg").isEmpty() ||
         QStandardPaths::findExecutable("ffprobe").isEmpty()) {
@@ -685,7 +689,9 @@ class TestExport : public QObject {
     QFETCH(bool, existing);
     QFETCH(bool, cancel);
 #ifdef PRIMOREELS_TSAN
-    QSKIP("skipped under TSan: recreating engines in one process trips the TSan thread-registry CHECK on this platform");
+    QSKIP(
+        "skipped under TSan: recreating engines in one process trips the TSan thread-registry "
+        "CHECK on this platform");
 #endif
     if (QStandardPaths::findExecutable("ffmpeg").isEmpty()) {
       QSKIP("ffmpeg CLI not available for fixture generation");
