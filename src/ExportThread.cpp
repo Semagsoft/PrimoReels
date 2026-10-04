@@ -232,7 +232,6 @@ void ExportThread::requestExport(const QVariantList& clips,
   m_pendingClips = clips;
   m_pendingOutput = outputPath;
   m_pendingVolume = std::clamp(volume, 0.0, 2.0);
-  m_cancelRequested = false;
   m_hasRequest = true;
   m_condition.wakeOne();
 }
@@ -292,6 +291,10 @@ void ExportThread::run() {
           error += QStringLiteral(" (cancel requested)");
         }
       }
+      // The latch's lifetime is one export run: consumed here after the
+      // abort-path annotation, so a new export never inherits a stale cancel
+      // (requestExport and request consumption deliberately do not touch it).
+      m_cancelRequested = false;
     }
     if (ok && error.isEmpty()) {
       emit exportFinished(output);
