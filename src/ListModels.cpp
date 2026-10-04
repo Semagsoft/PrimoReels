@@ -452,9 +452,14 @@ void MediaFilterModel::setFilterText(const QString& text) {
   if (m_filterText == text) {
     return;
   }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
   beginFilterChange();
   m_filterText = text;
-  endFilterChange();
+  endFilterChange(QSortFilterProxyModel::Direction::Rows);
+#else
+  m_filterText = text;
+  invalidateFilter();
+#endif
   emit filterTextChanged();
 }
 

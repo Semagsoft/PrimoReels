@@ -705,8 +705,16 @@ QByteArray MediaDecoder::resampleAudioFrame(const AVFrame* frame) {
   }
 
   QByteArray out;
+  // frame->data is uint8_t*[]; older swresample headers declare the input
+  // as const uint8_t** (without inner const), which rejects an implicit
+  // conversion, while newer headers use const uint8_t* const*. Copying into
+  // a const-qualified local array compiles against both declarations.
+  const uint8_t* inData[AV_NUM_DATA_POINTERS] = {};
+  for (int i = 0; i < AV_NUM_DATA_POINTERS; ++i) {
+    inData[i] = frame->data[i];
+  }
   const int converted =
-      swr_convert(m_swrContext.get(), dstData, outSamples, frame->data, frame->nb_samples);
+      swr_convert(m_swrContext.get(), dstData, outSamples, inData, frame->nb_samples);
   if (converted > 0) {
     out = QByteArray(reinterpret_cast<const char*>(dstData[0]),
                      static_cast<qsizetype>(converted) * audioChannelCount() *
