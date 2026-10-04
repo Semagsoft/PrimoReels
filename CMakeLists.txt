@@ -67,34 +67,65 @@ install(FILES packaging/io.github.primoreels.svg
 install(FILES packaging/io.github.primoreels.metainfo.xml
     DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
 
+# Registers one ctest per QtTest function (one process per test) when
+# PRIMOREELS_TESTS_ISOLATE_FUNCTIONS=ON, otherwise a single ctest that runs
+# the whole binary. Isolation matters under TSan: joining a finished QThread
+# corrupts this system's TSan thread registry (CHECK failed:
+# sanitizer_thread_registry.cpp), killing the process mid-suite and being
+# masked by TSAN exitcode=0 — see the tsan job in .github/workflows.
+function(primoreels_add_test NAME TARGET TIMEOUT LABELS)
+    if(PRIMOREELS_TESTS_ISOLATE_FUNCTIONS)
+        foreach(fn ${ARGN})
+            add_test(NAME "${NAME}.${fn}" COMMAND ${TARGET} ${fn})
+            set_tests_properties("${NAME}.${fn}" PROPERTIES TIMEOUT ${TIMEOUT}
+                LABELS "${LABELS}" PASS_REGULAR_EXPRESSION "Totals:"
+                ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_MEDIA_BACKEND=dummy")
+        endforeach()
+    else()
+        add_test(NAME ${NAME} COMMAND ${TARGET})
+        set_tests_properties(${NAME} PROPERTIES TIMEOUT ${TIMEOUT}
+            LABELS "${LABELS}" PASS_REGULAR_EXPRESSION "Totals:"
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_MEDIA_BACKEND=dummy")
+    endif()
+endfunction()
+
+# A TSan compile poisons the thread registry on joined QThreads and on
+# radeonsi_drv_video threads (CHECK failed: sanitizer_thread_registry.cpp),
+# killing the process mid-suite and being masked by TSAN exitcode=0 — see the
+# tsan job in .github/workflows/build.yml.
+if(CMAKE_CXX_FLAGS MATCHES "-fsanitize=thread")
+    set(PRIMOREELS_TSAN 1)
+    target_compile_definitions(PrimoReelsLib PRIVATE PRIMOREELS_TSAN=1)
+endif()
+
 # Tests
 include(CTest)
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
+    option(PRIMOREELS_TESTS_ISOLATE_FUNCTIONS
+        "Run each QtTest function in its own process" OFF)
     add_executable(PrimoReelsTests tests/TestTimelineEngine.cpp)
+    if(PRIMOREELS_TSAN)
+        target_compile_definitions(PrimoReelsTests PRIVATE PRIMOREELS_TSAN=1)
+    endif()
     target_compile_options(PrimoReelsTests PRIVATE -Wall -Wextra -Wpedantic)
     target_link_libraries(PrimoReelsTests PRIVATE PrimoReelsLib Qt6::Test)
-    add_test(NAME PrimoReelsTests COMMAND PrimoReelsTests)
-    set_tests_properties(PrimoReelsTests PROPERTIES TIMEOUT 120 LABELS "unit"
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_MEDIA_BACKEND=dummy")
+    primoreels_add_test(PrimoReelsTests PrimoReelsTests 120 "unit" invalidLoad_reportsFailure importMedia_leavesProgramUntouched importMedia_probesRealFileWithoutLoadingProgram seekBeforeLoad_isIgnored effectDefaults_areSane engineStartsWithoutAudio removeMedia_removesEntryAndEmits timelineAppend_unknownPathUsesPlaceholder timelineSequence_startTimesAccumulate timelineRemoveMoveClear timelineInsert_placesClipAndRecomputesStarts sequenceIndexOf_findsClips playSequenceFrom_emptyIsNoOp sequencePlayback_skipsFailedClipThenStops sequencePlayback_structuralEditCancels sequencePlayback_skipsOverlayClips playSequenceFrom_resolvesOverlayStart playSequenceFrom_allOverlayIsNoOp pause_preservesSequenceResume sequenceIndexOf_prefersV1Lane moveTimelineClip_keepsPlayingIndex projectSaveLoad_roundTrip importMedia_marksDirtyAndUndoable importMedia_staysDirtyAfterProbe importMedia_undoRedoReprobes projectSave_overwriteKeepsUsableFile projectLoad_invalidFileKeepsState undoRedo_timelineEdits undoRedo_removeAndClear newProject_resetsAndIsUndoable thumbnails_failedDecodeStillResolves trim_clampsAndPreservesPlayable split_dividesClipAndCarriesTrims split_absoluteTracksShiftRightStart setClipEffect_validatesAndIsUndoable setClipTransition_validatesClampsAndUndoes overlayClips_keepAbsolutePosition setClipTitle_truncatesUndoableAndPersists audioGainScalesAndClamps clipFadeGain_ramps mixAudio_sumsAndClamps audioBed_modelOps bedClipAt_resolvesTopmostAudible projectSaveLoad_preservesAudioFields previewChunkAppliesGainAndFade liveBedMix_containsBothTones liveBedOnly_withoutProgram bedFailure_warnsTransiently sourcePlayback_leavesProgramAudioUntouched audioPlayerBuffersWithoutBackend effectSetters_clampOutOfRange catalogs_matchLibrary cancelExport_withoutExportIsNoop exportEmpty_reportsFailure continuousScrubbing_rapidSeeksConverge listModels_stayInSyncWithLists listModels_incrementalSync listModels_directSyncOps droppedSeek_releasesSeekingGate seekPreemptedByAudioRestart_emitsSeekDropped preloadRetarget_samePathNewPositionRewarms audioSeekPastTruncatedTail_reportsFailure redoOfFailedImport_dropsGhostPlaceholder exportWarning_isAdvisoryNotFailure decoderStopAndWait_joinsWorker engineTeardown_withInflightOpen_isClean loadProject_rejectsOversizeFile loadProject_validatesMediaRows loadProject_rejectsForeignCurrentSource newProject_clearsWaveThumbCaches)
     add_executable(ExportTests tests/TestExport.cpp)
+    if(PRIMOREELS_TSAN)
+        target_compile_definitions(ExportTests PRIVATE PRIMOREELS_TSAN=1)
+    endif()
     target_compile_options(ExportTests PRIVATE -Wall -Wextra -Wpedantic)
     target_link_libraries(ExportTests PRIVATE PrimoReelsLib Qt6::Test)
-    add_test(NAME ExportTests COMMAND ExportTests)
-    set_tests_properties(ExportTests PROPERTIES TIMEOUT 300 LABELS "integration"
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_MEDIA_BACKEND=dummy")
+    primoreels_add_test(ExportTests ExportTests 300 "integration" exportEmptyTimeline_reportsFailure exportSequence_rendersMp4 exportSequence_honorsTrim exportSequence_rendersDissolve sequencePlayback_advancesThroughRealClips waveforms_audioClipCachesPeaks exportSequence_compositesOverlay exportSequence_mixesA1Bed exportSequence_appliesGainMuteAndVolume exportSequence_appliesFades exportSequence_audioOnlyRendersPlayableVideo thumbnails_realClipCachesImage playbackWithRealMedia_playPauseSeek sourceTransport_playPauseSeek previewTimelineClip_setsEffectWindow overlayStartTime_movesFreely removeMedia_cascadesToTimeline seekNonFinite_isIgnored newProject_clearsPendingLoad cancelExport_duringActiveExport exportDestination failedExport_preservesExistingDestination imageProviders_renderWithoutCrash clipUtils_normalizesFileUrls exportRejectsOverlongTimeline projectVersionMismatch_isRejected independentSourcePlayback_doesNotDisturbProgram)
     add_executable(EffectTests tests/TestEffects.cpp)
     target_compile_options(EffectTests PRIVATE -Wall -Wextra -Wpedantic)
     target_link_libraries(EffectTests PRIVATE PrimoReelsLib Qt6::Test)
-    add_test(NAME EffectTests COMMAND EffectTests)
-    set_tests_properties(EffectTests PROPERTIES TIMEOUT 120 LABELS "unit"
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_MEDIA_BACKEND=dummy")
+    primoreels_add_test(EffectTests EffectTests 120 "unit" catalogMatchesLibrary passthroughCases eachEffectKeepsSizeAndChangesPixels tinyImagesDoNotCrash vignetteDarkensCorners)
     add_executable(QmlLoadTests tests/TestQmlLoad.cpp qml.qrc)
     target_compile_options(QmlLoadTests PRIVATE -Wall -Wextra -Wpedantic)
     target_link_libraries(QmlLoadTests PRIVATE PrimoReelsLib Qt6::Test)
-    add_test(NAME QmlLoadTests COMMAND QmlLoadTests)
-    set_tests_properties(QmlLoadTests PROPERTIES TIMEOUT 120 LABELS "unit"
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_MEDIA_BACKEND=dummy")
+    primoreels_add_test(QmlLoadTests QmlLoadTests 120 "unit" mainWindow_loads mainWindow_interaction dialogs_existAndConfigured layout_saveRestoreReset timeline_dndRulerPlayhead timeline_a1Interactions library_catalogsAndTabs recentsAndTitle)
 endif()
 
 set(CPACK_PACKAGE_NAME "primoreels")

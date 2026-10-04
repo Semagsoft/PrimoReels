@@ -191,6 +191,7 @@ jobs:
           -DCMAKE_C_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g"
           -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
           -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=thread"
+          -DPRIMOREELS_TESTS_ISOLATE_FUNCTIONS=ON
 
       - name: Build
         run: cmake --build build-tsan --parallel
@@ -201,15 +202,35 @@ jobs:
           QT_MEDIA_BACKEND: dummy
           # System Qt is not TSan-instrumented, so Qt-internal races
           # (QDBusConnection, sendPostedEvents, ...) are expected noise.
-          # halt_on_error=0 lets the suite finish on the expected noise;
+          # halt_on_error=0 lets a test finish on the expected noise;
           # exitcode=0 stops TSan's default 66 from failing ctest, so the
-          # grep step below is the only gate on PrimoReels-source races.
+          # checks below are the only gate. NOTE: exitcode=0 also masks
+          # fatal TSan errors (THREAD REGISTRY CHECK failed, ...) — the
+          # "Totals" accounting below depends on that NOT happening, and
+          # PRIMOREELS_TESTS_ISOLATE_FUNCTIONS prevents it (one engine
+          # generation per process).
           TSAN_OPTIONS: halt_on_error=0:exitcode=0:second_deadlock_stack=1
-        run: ctest --test-dir build-tsan --output-on-failure -j2 2>&1 | tee tsan.log
+        run: ctest --test-dir build-tsan --verbose -j2 2>&1 | tee tsan.log
+
+      - name: Fail on TSan runtime failure
+        run: |
+          if grep -qE "FATAL: ThreadSanitizer|CHECK failed:" tsan.log; then
+            echo "ThreadSanitizer runtime failed (see tsan.log)"; exit 1
+          fi
 
       - name: Fail on races in PrimoReels sources
+        # System Qt is not TSan-instrumented, so Qt-internal races
+        # (QDBusConnection, sendPostedEvents, glib, pango) plus the QtTsan
+        # mutex-wrapper artifacts (QBasicMutex unlock never posts to
+        # __tsan_mutex_pre_unlock, manufacturing "double lock of a mutex"
+        # reports and their companions whose SUMMARY is rooted in
+        # DecoderThread/PreloadThread/ExportThread QMutex wrappers) are
+        # expected noise — matches on PrimoReels frames in the "created by"/
+        # mutex tail stacks also fire for these. Only a report whose
+        # SUMMARY top frame is a PrimoReels source AND that never touches
+        # the QtTsan wrapper counts as a real Gate failure.
         run: |
-          if grep -A40 "ThreadSanitizer" tsan.log | grep -E "TimelineEngine|DecoderThread|PreloadThread|ExportThread|MediaDecoder|VideoEffects|ListModels|FrameImageProvider|AudioPlayer|TestTimeline|TestExport|TestEffects|TestQml"; then
+          if awk -v RS="=+" '/WARNING: ThreadSanitizer/ && /TimelineEngine|DecoderThread|PreloadThread|ExportThread|MediaDecoder|VideoEffects|ListModels|FrameImageProvider|AudioPlayer|TestTimeline|TestExport|TestEffects|TestQml/ && !/QtTsan::/ { print "HIT" }' tsan.log | grep -q HIT; then
             echo "ThreadSanitizer race in PrimoReels sources (see tsan.log)"
             exit 1
           else

@@ -87,7 +87,15 @@ bool MediaDecoder::open(const QString& filePath) {
   }
 
   AVBufferRef* hwDeviceCtx = nullptr;
+#ifdef PRIMOREELS_TSAN
+  // Skip VAAPI under TSan: creating the VAAPI context spawns
+  // radeonsi_drv_video threads that corrupt this platform's TSan thread
+  // registry (CHECK failed in sanitizer_thread_registry). Software decode
+  // gives the same coverage in tests.
+  if (false) {
+#else
   if (av_hwdevice_ctx_create(&hwDeviceCtx, AV_HWDEVICE_TYPE_VAAPI, nullptr, nullptr, 0) >= 0) {
+#endif
     m_codecContext->hw_device_ctx = hwDeviceCtx;
     m_codecContext->get_format =
         [](AVCodecContext * ctx, const enum AVPixelFormat* pix_fmts)->enum AVPixelFormat {

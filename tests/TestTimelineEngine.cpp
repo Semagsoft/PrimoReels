@@ -1550,6 +1550,9 @@ class TestTimelineEngine : public QObject {
   }
 
   void engineTeardown_withInflightOpen_isClean() {
+#ifdef PRIMOREELS_TSAN
+    QSKIP("skipped under TSan: recreating engines in one process trips the TSan thread-registry CHECK on this platform");
+#endif
     if (QStandardPaths::findExecutable("ffmpeg").isEmpty()) {
       QSKIP("ffmpeg CLI not available for fixture generation");
     }
