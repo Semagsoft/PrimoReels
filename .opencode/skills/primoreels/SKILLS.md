@@ -19,12 +19,14 @@ This document serves as the core reference guide for developers and AI agents wo
 
 ## 2. Architecture & Threading Model
 
-PrimoReels uses a strict multi-threaded architecture to maintain responsive 60fps UI performance during playback, scrubbing, and timeline editing.
+PrimoReels uses a strict multi-threaded architecture to stay responsive during playback, scrubbing, and timeline editing (33 ms playback clock, ~30 fps).
 
 | Thread | Owner / Class | Role & Responsibilities |
 | --- | --- | --- |
 | **GUI** | `TimelineEngine` | Orchestrator & QML bridge. Owns all state (`mediaList`, `timelineClips`, caches, undo stack). Drives 33ms playback timer. |
 | **Decode** | `DecoderThread` | Central playback worker owning one `MediaDecoder`. Coalesces requests: Close > Open > newest Seek/AudioRestart > top-up > thumbnails. |
+| **Source** | `DecoderThread` (`m_sourceDecoderThread`) | Source-monitor video audition. Own decoder + own 33 ms `m_sourceTimer`. Video-only by design: never `requestAudioRestart/Topup`, so program audio plays undisturbed. |
+| **Bed** | `DecoderThread` (`m_bedDecoderThread`) | Live A1/V2 preview mixer source. Audio restarts + top-ups only (no preloader, no video/thumbnail requests) so bed work never starves program seeks. |
 | **Preload** | `PreloadThread` | Warms up the next sequence clip (`takeReadyDecoder()` pure `unique_ptr` ownership transfer). Renders audio waveforms off-thread. |
 | **Export** | `ExportThread` | Offline MP4 muxer. Single request slot, cooperative cancel, 30fps sample-and-hold video resampling, transition/V2 overlay mixing. |
 | **Audio Render** | Qt-owned (`AudioFifoDevice`) | Pulls PCM from mutex FIFO into `QAudioSink`. |
@@ -36,6 +38,8 @@ PrimoReels uses a strict multi-threaded architecture to maintain responsive 60fp
 3. **Thread Confinement:** `MediaDecoder` is a plain value type (no `QObject`, no thread affinity). Instances are thread-confined and never shared across threads. Preload handoff is a pure `std::unique_ptr` transfer (no `moveToThread()`).
 4. **Lock Order:** Always acquire locks in the established order (`m_frameMutex` then `m_dataMutex`) to prevent deadlocks.
 5. **Teardown Order:** `TimelineEngine::~TimelineEngine` must disconnect worker signals first, clear the decoder → preloader back-pointer, then stop/cancel workers.
+6. **Source Stays Silent:** The source monitor (`m_sourceDecoderThread`) must never request audio. The single audible path is the program FIFO; locked by `sourcePlayback_leavesProgramAudioUntouched`.
+7. **Bed Never Starves Program:** `m_bedDecoderThread` does audio restarts + top-ups only — no preloader, no video/thumbnail requests.
 
 ---
 

@@ -12,6 +12,7 @@ executable and the test binaries.
 | --- | --- | --- |
 | GUI | `TimelineEngine` | Orchestrator + QML bridge. Owns all state (`mediaList`, `timelineClips`, caches). 33 ms `QTimer` playback clock. |
 | Decode | `DecoderThread` | Central playback worker. Owns one `MediaDecoder`. Coalesced requests: Close > Open > newest Seek/AudioRestart > top-up > thumbnails. |
+| Source | `DecoderThread` (`m_sourceDecoderThread`) | Source-monitor video audition. Own decoder + own 33 ms `m_sourceTimer`. Video-only by design (never `requestAudioRestart/Topup`) so program audio plays undisturbed. |
 | Bed | `DecoderThread` (`m_bedDecoderThread`) | Live A1/V2 preview mixer source. Audio restarts + top-ups only (no preloader, no video/thumbnail requests) so bed work never starves program seeks. |
 | Preload | `PreloadThread` | Warms the next sequence clip (`takeReadyDecoder()` pure `unique_ptr` ownership transfer); renders audio waveforms off-thread. |
 | Export | `ExportThread` | Offline MP4 muxer. Single request slot, cooperative cancel. |
