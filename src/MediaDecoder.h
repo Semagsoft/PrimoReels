@@ -36,6 +36,10 @@ class MediaDecoder {
   double duration() const { return m_duration; }
   int width() const { return m_width; }
   int height() const { return m_height; }
+  // Display aspect ratio (width/height including sample aspect ratio).
+  // Anamorphic/phone footage has non-square pixels; monitors letterbox
+  // using this instead of the raw storage aspect.
+  double displayAspectRatio() const { return m_displayAspectRatio; }
 
   static constexpr int audioSampleRate() { return 48000; }
   static constexpr int audioChannelCount() { return 2; }
@@ -101,6 +105,7 @@ class MediaDecoder {
   double m_duration = 0.0;
   int m_width = 0;
   int m_height = 0;
+  double m_displayAspectRatio = 16.0 / 9.0;
 
   FormatContextPtr m_audioFormatContext;
   CodecContextPtr m_audioCodecContext;

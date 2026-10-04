@@ -306,7 +306,8 @@ class TestQmlLoad : public QObject {
     engine.appendClipToTimeline("/clips/a.mp4");
     engine.appendAudioClip("/clips/bed.mp3", 2.0);
     QMetaObject::invokeMethod(&engine, "onLoaded", Q_ARG(QString, QString("/clips/bed.mp3")),
-                              Q_ARG(double, 10.0), Q_ARG(int, 0), Q_ARG(int, 0), Q_ARG(bool, true));
+                              Q_ARG(double, 10.0), Q_ARG(int, 0), Q_ARG(int, 0), Q_ARG(bool, true),
+                              Q_ARG(double, 16.0 / 9.0));
     QVERIFY(timeline->setProperty("selectedClipIndex", 1));
     QMetaObject::invokeMethod(&engine, "onFrameReady", Q_ARG(double, 4.0),
                               Q_ARG(QImage, QImage(32, 32, QImage::Format_RGB32)));

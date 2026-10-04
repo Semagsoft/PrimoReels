@@ -176,7 +176,7 @@ void DecoderThread::run() {
         }
       }
       emit loaded(path, m_decoder->duration(), m_decoder->width(), m_decoder->height(),
-                  m_decoder->hasAudio());
+                  m_decoder->hasAudio(), m_decoder->displayAspectRatio());
     } else if (req == RequestAudioRestart) {
       ensureDecoder();
       constexpr int chunkBytes = 48000;

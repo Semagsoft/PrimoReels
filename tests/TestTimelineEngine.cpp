@@ -418,7 +418,7 @@ class TestTimelineEngine : public QObject {
     // Seed a real duration so play() can resume without a decoder.
     QMetaObject::invokeMethod(&engine, "onLoaded", Q_ARG(QString, QString("/clips/a.mp4")),
                               Q_ARG(double, 10.0), Q_ARG(int, 640), Q_ARG(int, 480),
-                              Q_ARG(bool, false));
+                              Q_ARG(bool, false), Q_ARG(double, 16.0 / 9.0));
     engine.appendClipToTimeline("/clips/a.mp4");
     engine.appendClipToTimeline("/clips/b.mp4");
     engine.playSequenceFrom(0);
@@ -477,10 +477,10 @@ class TestTimelineEngine : public QObject {
     // Seed the bin without a real decoder via the loaded() path.
     QMetaObject::invokeMethod(&engine, "onLoaded", Q_ARG(QString, QString("/clips/a.mp4")),
                               Q_ARG(double, 10.0), Q_ARG(int, 640), Q_ARG(int, 480),
-                              Q_ARG(bool, false));
+                              Q_ARG(bool, false), Q_ARG(double, 16.0 / 9.0));
     QMetaObject::invokeMethod(&engine, "onLoaded", Q_ARG(QString, QString("/clips/b.mp4")),
                               Q_ARG(double, 20.0), Q_ARG(int, 640), Q_ARG(int, 480),
-                              Q_ARG(bool, false));
+                              Q_ARG(bool, false), Q_ARG(double, 16.0 / 9.0));
     QCOMPARE(engine.mediaList().size(), 2);
     engine.appendClipToTimeline("/clips/a.mp4");
     engine.appendClipToTimeline("/clips/b.mp4");
@@ -584,7 +584,7 @@ class TestTimelineEngine : public QObject {
     TimelineEngine engine;
     QMetaObject::invokeMethod(&engine, "onLoaded", Q_ARG(QString, QString("/clips/a.mp4")),
                               Q_ARG(double, 10.0), Q_ARG(int, 640), Q_ARG(int, 480),
-                              Q_ARG(bool, false));
+                              Q_ARG(bool, false), Q_ARG(double, 16.0 / 9.0));
     engine.appendClipToTimeline("/clips/a.mp4");
 
     QTemporaryDir dir;
@@ -977,7 +977,7 @@ class TestTimelineEngine : public QObject {
     TimelineEngine engine;
     QMetaObject::invokeMethod(&engine, "onLoaded", Q_ARG(QString, QString("/clips/a.mp4")),
                               Q_ARG(double, 10.0), Q_ARG(int, 640), Q_ARG(int, 480),
-                              Q_ARG(bool, true));
+                              Q_ARG(bool, true), Q_ARG(double, 16.0 / 9.0));
     engine.appendClipToTimeline("/clips/a.mp4");
     engine.appendAudioClip("/clips/a.mp4", 4.0);
     engine.setClipGain(0, 0.5);
@@ -1015,7 +1015,7 @@ class TestTimelineEngine : public QObject {
     engine.setClipFadeIn(0, 1.0);
     QMetaObject::invokeMethod(&engine, "onLoaded", Q_ARG(QString, QString("/clips/a.mp4")),
                               Q_ARG(double, 10.0), Q_ARG(int, 640), Q_ARG(int, 480),
-                              Q_ARG(bool, true));
+                              Q_ARG(bool, true), Q_ARG(double, 16.0 / 9.0));
     // Chunk 1: tMid = 2400/48000 = 0.05 -> fade 0.05 -> ~25.
     QMetaObject::invokeMethod(&engine, "onAudioData", Q_ARG(QByteArray, makeConstChunk(4800, 1000)),
                               Q_ARG(double, 0.0));
@@ -1237,7 +1237,7 @@ class TestTimelineEngine : public QObject {
     TimelineEngine engine;
     QMetaObject::invokeMethod(&engine, "onLoaded", Q_ARG(QString, QString("/clips/a.mp4")),
                               Q_ARG(double, 10.0), Q_ARG(int, 640), Q_ARG(int, 480),
-                              Q_ARG(bool, false));
+                              Q_ARG(bool, false), Q_ARG(double, 16.0 / 9.0));
     QCOMPARE(engine.duration(), 10.0);
 
     engine.seek(1.0);
@@ -1258,7 +1258,7 @@ class TestTimelineEngine : public QObject {
 
     QMetaObject::invokeMethod(&engine, "onLoaded", Q_ARG(QString, QString("/clips/a.mp4")),
                               Q_ARG(double, 10.0), Q_ARG(int, 640), Q_ARG(int, 480),
-                              Q_ARG(bool, false));
+                              Q_ARG(bool, false), Q_ARG(double, 16.0 / 9.0));
     QCOMPARE(mediaModel->rowCount(), 1);
     QCOMPARE(filterModel->rowCount(), 1);
 
@@ -1411,7 +1411,7 @@ class TestTimelineEngine : public QObject {
     TimelineEngine engine;
     QMetaObject::invokeMethod(&engine, "onLoaded", Q_ARG(QString, QString("/clips/a.mp4")),
                               Q_ARG(double, 10.0), Q_ARG(int, 640), Q_ARG(int, 480),
-                              Q_ARG(bool, false));
+                              Q_ARG(bool, false), Q_ARG(double, 16.0 / 9.0));
     engine.seek(5.0);  // arms the seeking gate; bogus path fails async
     // A preempted seek reports via onSeekDropped (no such slot before the
     // fix, so the invoke itself is the regression guard).

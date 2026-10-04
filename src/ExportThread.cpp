@@ -1037,9 +1037,10 @@ bool ExportThread::runExport(const QVariantList& clips,
                 break;
               }
               // Bounded by frameSize (small): int64 min, then narrow.
-              const int wantSamples = static_cast<int>(std::min<int64_t>(
-                  static_cast<int64_t>(frameSize) * 4, neededSamples - encodedSamples -
-                                     static_cast<int>(staging.size() / kAudioChannels)));
+              const int wantSamples = static_cast<int>(
+                  std::min<int64_t>(static_cast<int64_t>(frameSize) * 4,
+                                    neededSamples - encodedSamples -
+                                        static_cast<int>(staging.size() / kAudioChannels)));
               const int wantBytes = std::max(4096, wantSamples * bytesPerSampleFrame);
               decoderChunk = dec.readAudioChunk(std::min(wantBytes, 65536));
               chunkPos = 0;
@@ -1085,7 +1086,9 @@ bool ExportThread::runExport(const QVariantList& clips,
                 success = false;
                 break;
               }
-              staging.erase(staging.begin(), staging.begin() + static_cast<QList<char>::difference_type>(n) * kAudioChannels);
+              staging.erase(
+                  staging.begin(),
+                  staging.begin() + static_cast<QList<char>::difference_type>(n) * kAudioChannels);
               encodedSamples += n;
               continue;
             }

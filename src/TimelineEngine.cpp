@@ -1818,7 +1818,9 @@ void TimelineEngine::onLoaded(const QString& path,
                               double duration,
                               int width,
                               int height,
-                              bool hasAudio) {
+                              bool hasAudio,
+                              double aspectRatio) {
+  m_currentAspectRatio = aspectRatio;
   m_opening = false;
   m_loadingSource = false;
   m_currentSource = path;
@@ -1942,7 +1944,9 @@ void TimelineEngine::onBedLoaded(const QString& path,
                                  double duration,
                                  int width,
                                  int height,
-                                 bool hasAudio) {
+                                 bool hasAudio,
+                                 double aspectRatio) {
+  Q_UNUSED(aspectRatio)
   Q_UNUSED(duration)
   Q_UNUSED(width)
   Q_UNUSED(height)
@@ -2284,7 +2288,9 @@ void TimelineEngine::onSourceLoaded(const QString& path,
                                     double duration,
                                     int width,
                                     int height,
-                                    bool hasAudio) {
+                                    bool hasAudio,
+                                    double aspectRatio) {
+  m_sourceAspectRatio = aspectRatio;
   Q_UNUSED(width)
   Q_UNUSED(height)
   Q_UNUSED(hasAudio)

@@ -109,6 +109,17 @@ bool MediaDecoder::open(const QString& filePath) {
   m_width = m_codecContext->width;
   m_height = m_codecContext->height;
   m_duration = durationFromContext();
+  if (m_width > 0 && m_height > 0) {
+    AVRational sar = m_codecContext->sample_aspect_ratio;
+    if (sar.num <= 0 || sar.den <= 0) {
+      sar = m_formatContext->streams[m_videoStreamIndex]->codecpar->sample_aspect_ratio;
+    }
+    m_displayAspectRatio = (sar.num > 0 && sar.den > 0)
+                               ? static_cast<double>(m_width) * sar.num / (m_height * sar.den)
+                               : static_cast<double>(m_width) / m_height;
+  } else {
+    m_displayAspectRatio = 16.0 / 9.0;  // audio-only placeholder
+  }
   // Bound what the rest of the pipeline may assume: absurd dimensions
   // overflow bytesPerLine casts and frame buffers, and absurd durations
   // overflow timestamp rescaling (seconds * AV_TIME_BASE) and waveform
@@ -159,6 +170,7 @@ void MediaDecoder::close() {
   m_duration = 0.0;
   m_width = 0;
   m_height = 0;
+  m_displayAspectRatio = 16.0 / 9.0;
   m_lastSrcW = 0;
   m_lastSrcH = 0;
   m_lastSrcFormat = -1;
@@ -673,7 +685,8 @@ QByteArray MediaDecoder::resampleAudioFrame(const AVFrame* frame) {
       swr_convert(m_swrContext.get(), dstData, outSamples, frame->data, frame->nb_samples);
   if (converted > 0) {
     out = QByteArray(reinterpret_cast<const char*>(dstData[0]),
-                     static_cast<qsizetype>(converted) * audioChannelCount() * static_cast<int>(sizeof(int16_t)));
+                     static_cast<qsizetype>(converted) * audioChannelCount() *
+                         static_cast<int>(sizeof(int16_t)));
   }
 
   if (dstData) {

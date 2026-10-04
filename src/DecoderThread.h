@@ -40,7 +40,12 @@ class DecoderThread : public QThread {
   void setPreloader(PreloadThread* preloader);
 
  signals:
-  void loaded(const QString& path, double duration, int width, int height, bool hasAudio);
+  void loaded(const QString& path,
+              double duration,
+              int width,
+              int height,
+              bool hasAudio,
+              double aspectRatio);
   void frameReady(double position, QImage frame);
   void audioDataReady(QByteArray data, double startTime);
   void audioFinished();

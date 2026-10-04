@@ -76,6 +76,10 @@ class TimelineEngine : public QObject {
   bool frameAvailable() const;
   int frameWidth() const;
   int frameHeight() const;
+  // Display aspect (storage aspect adjusted by sample aspect ratio) for
+  // letterboxing in VideoFrameItem; refreshed on each successful load.
+  double currentAspectRatio() const { return m_currentAspectRatio; }
+  double sourceAspectRatio() const { return m_sourceAspectRatio; }
   int frameVersion() const { return m_frameVersion; }
   double clipScaleX() const { return m_clipScaleX; }
   void setClipScaleX(double scale);
@@ -226,13 +230,23 @@ class TimelineEngine : public QObject {
   void onExportFailed(const QString& message);
   void onExportWarning(const QString& message);
   void onTick();
-  void onLoaded(const QString& path, double duration, int width, int height, bool hasAudio);
+  void onLoaded(const QString& path,
+                double duration,
+                int width,
+                int height,
+                bool hasAudio,
+                double aspectRatio);
   void onFrameReady(double position, QImage frame);
   void onAudioData(const QByteArray& data, double startTime);
   void onAudioFinished();
   void onAudioError(const QString& message);
   // Bed (A1/V2) live-mix preview slots (m_bedDecoderThread signals).
-  void onBedLoaded(const QString& path, double duration, int width, int height, bool hasAudio);
+  void onBedLoaded(const QString& path,
+                   double duration,
+                   int width,
+                   int height,
+                   bool hasAudio,
+                   double aspectRatio);
   void onBedAudioData(const QByteArray& data, double startTime);
   void onBedAudioFinished();
   void onBedAudioError(const QString& message);
@@ -241,7 +255,12 @@ class TimelineEngine : public QObject {
   void onDecoderClosed();
   void onSeekDropped();
   // Source preview slots (m_sourceDecoderThread signals).
-  void onSourceLoaded(const QString& path, double duration, int width, int height, bool hasAudio);
+  void onSourceLoaded(const QString& path,
+                      double duration,
+                      int width,
+                      int height,
+                      bool hasAudio,
+                      double aspectRatio);
   void onSourceFrameReady(double position, QImage frame);
   void onSourceFailed(const QString& message);
   void onSourceClosed();
@@ -303,6 +322,7 @@ class TimelineEngine : public QObject {
   QString m_pendingLoad;
   double m_pendingSeek = 0.0;
   QImage m_currentFrame;
+  double m_currentAspectRatio = 16.0 / 9.0;
   int m_frameVersion = 0;
   double m_clipScaleX = 1.0;
   double m_clipScaleY = 1.0;
@@ -412,6 +432,7 @@ class TimelineEngine : public QObject {
   QString m_sourcePath;
   QString m_sourceWantedPath;
   double m_sourceDuration = 0.0;
+  double m_sourceAspectRatio = 16.0 / 9.0;
   double m_sourcePosition = 0.0;
   double m_sourceBasePosition = 0.0;
   bool m_sourcePlaying = false;
