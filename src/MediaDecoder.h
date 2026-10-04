@@ -106,6 +106,12 @@ class MediaDecoder {
   int m_width = 0;
   int m_height = 0;
   double m_displayAspectRatio = 16.0 / 9.0;
+  // First PTS of each stream in that stream's time_base, converted to
+  // seconds. Non-zero for TS (starts ~1.4s) and edit-list MOV sources;
+  // every public timestamp is media-relative (subtract on decode, add on
+  // seek).
+  double m_videoStartSeconds = 0.0;
+  double m_audioStartSeconds = 0.0;
 
   FormatContextPtr m_audioFormatContext;
   CodecContextPtr m_audioCodecContext;

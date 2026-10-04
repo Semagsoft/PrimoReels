@@ -120,6 +120,12 @@ bool MediaDecoder::open(const QString& filePath) {
   } else {
     m_displayAspectRatio = 16.0 / 9.0;  // audio-only placeholder
   }
+  if (m_videoStreamIndex >= 0) {
+    const AVStream* vstream = m_formatContext->streams[m_videoStreamIndex];
+    if (vstream && vstream->start_time != AV_NOPTS_VALUE) {
+      m_videoStartSeconds = av_q2d(vstream->time_base) * static_cast<double>(vstream->start_time);
+    }
+  }
   // Bound what the rest of the pipeline may assume: absurd dimensions
   // overflow bytesPerLine casts and frame buffers, and absurd durations
   // overflow timestamp rescaling (seconds * AV_TIME_BASE) and waveform
@@ -171,6 +177,8 @@ void MediaDecoder::close() {
   m_width = 0;
   m_height = 0;
   m_displayAspectRatio = 16.0 / 9.0;
+  m_videoStartSeconds = 0.0;
+  m_audioStartSeconds = 0.0;
   m_lastSrcW = 0;
   m_lastSrcH = 0;
   m_lastSrcFormat = -1;
@@ -194,7 +202,7 @@ QImage MediaDecoder::getFrameAt(double seconds, const std::function<bool()>& can
   }
 
   const int64_t timestamp =
-      av_rescale_q(static_cast<int64_t>(std::llround(clampedSeconds * AV_TIME_BASE)),
+      av_rescale_q(static_cast<int64_t>(std::llround((clampedSeconds + m_videoStartSeconds) * AV_TIME_BASE)),
                    AVRational{1, AV_TIME_BASE}, stream->time_base);
 
   const int seekResult =
@@ -263,7 +271,7 @@ bool MediaDecoder::seekVideoTo(double seconds) {
     return false;
   }
   const int64_t timestamp =
-      av_rescale_q(static_cast<int64_t>(std::llround(clampedSeconds * AV_TIME_BASE)),
+      av_rescale_q(static_cast<int64_t>(std::llround((clampedSeconds + m_videoStartSeconds) * AV_TIME_BASE)),
                    AVRational{1, AV_TIME_BASE}, stream->time_base);
   if (av_seek_frame(m_formatContext.get(), m_videoStreamIndex, timestamp, AVSEEK_FLAG_BACKWARD) <
       0) {
@@ -387,7 +395,7 @@ double MediaDecoder::frameTimestampSeconds(const AVFrame* frame) const {
     return std::numeric_limits<double>::quiet_NaN();
   }
 
-  return av_q2d(stream->time_base) * timestamp;
+  return av_q2d(stream->time_base) * timestamp - m_videoStartSeconds;
 }
 
 QImage MediaDecoder::convertFrame(const AVFrame* frame) const {
@@ -532,6 +540,12 @@ bool MediaDecoder::setupAudio(const QString& filePath) {
   m_swrContext = std::move(swr);
   m_audioStreamIndex = streamIndex;
   m_audioPosition = 0.0;
+  if (streamIndex >= 0 && m_audioFormatContext) {
+    const AVStream* astream = m_audioFormatContext->streams[streamIndex];
+    if (astream && astream->start_time != AV_NOPTS_VALUE) {
+      m_audioStartSeconds = av_q2d(astream->time_base) * static_cast<double>(astream->start_time);
+    }
+  }
   return true;
 }
 
@@ -546,8 +560,9 @@ bool MediaDecoder::seekAudioTo(double seconds) {
     return false;
   }
 
-  const int64_t timestamp = av_rescale_q(static_cast<int64_t>(std::llround(target * AV_TIME_BASE)),
-                                         AVRational{1, AV_TIME_BASE}, stream->time_base);
+  const int64_t timestamp =
+      av_rescale_q(static_cast<int64_t>(std::llround((target + m_audioStartSeconds) * AV_TIME_BASE)),
+                   AVRational{1, AV_TIME_BASE}, stream->time_base);
 
   if (av_seek_frame(m_audioFormatContext.get(), m_audioStreamIndex, timestamp,
                     AVSEEK_FLAG_BACKWARD) < 0) {
@@ -588,7 +603,8 @@ bool MediaDecoder::seekAudioTo(double seconds) {
         pts = m_audioFrame->pts;
       }
       const double frameEnd = timeBase * static_cast<double>(pts) +
-                              static_cast<double>(m_audioFrame->nb_samples) / sampleRate;
+                              static_cast<double>(m_audioFrame->nb_samples) / sampleRate -
+                              m_audioStartSeconds;
       av_frame_unref(m_audioFrame.get());
       if (frameEnd > target) {
         caughtUp = true;
