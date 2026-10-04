@@ -201,9 +201,10 @@ jobs:
           QT_MEDIA_BACKEND: dummy
           # System Qt is not TSan-instrumented, so Qt-internal races
           # (QDBusConnection, sendPostedEvents, ...) are expected noise.
-          # halt_on_error=0 lets the suite finish; the next step fails only
-          # on races whose stacks mention PrimoReels sources.
-          TSAN_OPTIONS: halt_on_error=0:second_deadlock_stack=1
+          # halt_on_error=0 lets the suite finish on the expected noise;
+          # exitcode=0 stops TSan's default 66 from failing ctest, so the
+          # grep step below is the only gate on PrimoReels-source races.
+          TSAN_OPTIONS: halt_on_error=0:exitcode=0:second_deadlock_stack=1
         run: ctest --test-dir build-tsan --output-on-failure -j2 2>&1 | tee tsan.log
 
       - name: Fail on races in PrimoReels sources
