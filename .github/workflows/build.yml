@@ -104,6 +104,13 @@ jobs:
       - name: Configure (clang++, compile commands)
         run: cmake -S . -B build-tidy -DCMAKE_CXX_COMPILER=clang++-22 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
+      - name: Generate AUTOGEN outputs (for clang-tidy)
+        run: >
+          cmake --build build-tidy --target
+          PrimoReelsLib_autogen PrimoReels_autogen
+          PrimoReelsTests_autogen ExportTests_autogen
+          EffectTests_autogen QmlLoadTests_autogen
+
       - name: clang-tidy
         run: |
           find src tests -name '*.cpp' | xargs clang-tidy-22 -p build-tidy --quiet
