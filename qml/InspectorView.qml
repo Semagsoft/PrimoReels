@@ -41,7 +41,7 @@ Rectangle {
                     ColumnLayout {
                         anchors.fill: parent
                         RowLayout {
-                            Label { id: scaleXLabel; text: qsTr("Scale X"); color: "#cccccc"; font.pointSize: 9; width: 70 }
+                            Label { id: scaleXLabel; text: qsTr("Scale X"); color: "#cccccc"; font.pointSize: 9; Layout.preferredWidth: 70 }
                             SpinBox {
                                 from: 10; to: 500
                                 // Guard echo: engine round-trip must not
@@ -53,7 +53,7 @@ Rectangle {
                             }
                         }
                         RowLayout {
-                            Label { text: qsTr("Scale Y"); color: "#cccccc"; font.pointSize: 9; width: 70 }
+                            Label { text: qsTr("Scale Y"); color: "#cccccc"; font.pointSize: 9; Layout.preferredWidth: 70 }
                             SpinBox {
                                 from: 10; to: 500
                                 value: activeFocus ? value : Math.round(timelineEngine.clipScaleY * 100)
@@ -63,7 +63,7 @@ Rectangle {
                             }
                         }
                         RowLayout {
-                            Label { text: qsTr("Rotation"); color: "#cccccc"; font.pointSize: 9; width: 70 }
+                            Label { text: qsTr("Rotation"); color: "#cccccc"; font.pointSize: 9; Layout.preferredWidth: 70 }
                             SpinBox {
                                 value: activeFocus ? value : Math.round(timelineEngine.clipRotation)
                                 to: 360; from: -360
@@ -82,7 +82,7 @@ Rectangle {
                     ColumnLayout {
                         anchors.fill: parent
                         RowLayout {
-                            Label { text: qsTr("Volume"); color: "#cccccc"; font.pointSize: 9; width: 70 }
+                            Label { text: qsTr("Volume"); color: "#cccccc"; font.pointSize: 9; Layout.preferredWidth: 70 }
                             Slider {
                                 id: volumeSlider
                                 from: 0; to: 2.0; stepSize: 0.1
@@ -103,7 +103,7 @@ Rectangle {
                         }
                         RowLayout {
                             enabled: selClip !== null
-                            Label { text: qsTr("Clip gain"); color: "#cccccc"; font.pointSize: 9; width: 70 }
+                            Label { text: qsTr("Clip gain"); color: "#cccccc"; font.pointSize: 9; Layout.preferredWidth: 70 }
                             Slider {
                                 id: gainSlider
                                 from: 0; to: 2.0; stepSize: 0.1
@@ -115,7 +115,7 @@ Rectangle {
                         }
                         RowLayout {
                             enabled: selClip !== null
-                            Label { text: qsTr("Mute clip"); color: "#cccccc"; font.pointSize: 9; width: 70 }
+                            Label { text: qsTr("Mute clip"); color: "#cccccc"; font.pointSize: 9; Layout.preferredWidth: 70 }
                             CheckBox {
                                 checked: selClip ? !!selClip.muted : false
                                 Accessible.name: qsTr("Mute clip")
@@ -124,7 +124,7 @@ Rectangle {
                         }
                         RowLayout {
                             enabled: selClip !== null
-                            Label { text: qsTr("Fade in"); color: "#cccccc"; font.pointSize: 9; width: 70 }
+                            Label { text: qsTr("Fade in"); color: "#cccccc"; font.pointSize: 9; Layout.preferredWidth: 70 }
                             SpinBox {
                                 from: 0; to: 300
                                 value: activeFocus ? value : Math.round((selClip ? (selClip.fadeIn || 0) : 0) * 10)
@@ -135,7 +135,7 @@ Rectangle {
                         }
                         RowLayout {
                             enabled: selClip !== null
-                            Label { text: qsTr("Fade out"); color: "#cccccc"; font.pointSize: 9; width: 70 }
+                            Label { text: qsTr("Fade out"); color: "#cccccc"; font.pointSize: 9; Layout.preferredWidth: 70 }
                             SpinBox {
                                 from: 0; to: 300
                                 value: activeFocus ? value : Math.round((selClip ? (selClip.fadeOut || 0) : 0) * 10)

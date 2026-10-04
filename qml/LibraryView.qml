@@ -83,51 +83,55 @@ Rectangle {
             background: Rectangle { color: "#222222" }
 
             TabButton {
+                id: binTab
                 text: qsTr("Bin")
                 Accessible.name: qsTr("Project bin tab")
                 contentItem: Text {
-                    text: parent.text
-                    color: libraryTabBar.currentIndex === 0 || parent.visualFocus || parent.hovered ? "#ffffff" : "#cccccc"
+                    text: binTab.text
+                    color: libraryTabBar.currentIndex === 0 || binTab.visualFocus || binTab.hovered ? "#ffffff" : "#cccccc"
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     font.pointSize: 9
-                    font.bold: parent.down || libraryTabBar.currentIndex === 0
+                    font.bold: binTab.down || libraryTabBar.currentIndex === 0
                 }
             }
             TabButton {
+                id: effectsTab
                 text: qsTr("Effects")
                 Accessible.name: qsTr("Effects tab")
                 contentItem: Text {
-                    text: parent.text
-                    color: libraryTabBar.currentIndex === 1 || parent.visualFocus || parent.hovered ? "#ffffff" : "#cccccc"
+                    text: effectsTab.text
+                    color: libraryTabBar.currentIndex === 1 || effectsTab.visualFocus || effectsTab.hovered ? "#ffffff" : "#cccccc"
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     font.pointSize: 9
-                    font.bold: parent.down || libraryTabBar.currentIndex === 1
+                    font.bold: effectsTab.down || libraryTabBar.currentIndex === 1
                 }
             }
             TabButton {
+                id: audioTab
                 text: qsTr("Audio")
                 Accessible.name: qsTr("Audio tab")
                 contentItem: Text {
-                    text: parent.text
-                    color: libraryTabBar.currentIndex === 2 || parent.visualFocus || parent.hovered ? "#ffffff" : "#cccccc"
+                    text: audioTab.text
+                    color: libraryTabBar.currentIndex === 2 || audioTab.visualFocus || audioTab.hovered ? "#ffffff" : "#cccccc"
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     font.pointSize: 9
-                    font.bold: parent.down || libraryTabBar.currentIndex === 2
+                    font.bold: audioTab.down || libraryTabBar.currentIndex === 2
                 }
             }
             TabButton {
+                id: transitionsTab
                 text: qsTr("Transitions")
                 Accessible.name: qsTr("Transitions tab")
                 contentItem: Text {
-                    text: parent.text
-                    color: libraryTabBar.currentIndex === 3 || parent.visualFocus || parent.hovered ? "#ffffff" : "#cccccc"
+                    text: transitionsTab.text
+                    color: libraryTabBar.currentIndex === 3 || transitionsTab.visualFocus || transitionsTab.hovered ? "#ffffff" : "#cccccc"
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                     font.pointSize: 9
-                    font.bold: parent.down || libraryTabBar.currentIndex === 3
+                    font.bold: transitionsTab.down || libraryTabBar.currentIndex === 3
                 }
             }
         }
