@@ -1,9 +1,12 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQuickWindow>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QUrl>
 #include "FrameImageProvider.h"
 #include "TimelineEngine.h"
 #include "VideoFrameItem.h"
@@ -257,22 +260,36 @@ class TestQmlLoad : public QObject {
 
     // Sizes written to settings flow to the panels through the
     // SplitView.preferredWidth/Height bindings (restore must not break them).
-    // Re-show everything first (hidden panels report width 0) and widen the
-    // window so preferred sizes fit without SplitView shrinking them; the
-    // fillWidth monitors then only need to meet their minimums.
-    QVERIFY(library->setProperty("visible", true));
-    QVERIFY(source->setProperty("visible", true));
-    QVERIFY(program->setProperty("visible", true));
-    QVERIFY(inspector->setProperty("visible", true));
-    QVERIFY(timeline->setProperty("visible", true));
-    QVERIFY(root->setProperty("width", 2000));
-    QVERIFY(QMetaObject::invokeMethod(root, "saveViewState"));
+    // Write the preferences first, then force windowed state (a persisted
+    // Maximized from a real session would ignore explicit widths, and
+    // offscreen screens are tiny), re-show the panels (the restore below
+    // re-applies the hidden state still in settings), and finally really
+    // widen the window (a no-op set schedules no SplitView layout); the
+    // resulting layout reads the live preferences. The fillWidth monitors
+    // only need to meet their minimums.
     QVERIFY(settings->setProperty("libraryWidth", 260.0));
     QVERIFY(settings->setProperty("sourceWidth", 310.0));
     QVERIFY(settings->setProperty("programWidth", 510.0));
     QVERIFY(settings->setProperty("inspectorWidth", 240.0));
     QVERIFY(settings->setProperty("timelineHeight", 260.0));
-    QTest::qWait(100);
+    QVERIFY(settings->setProperty("winVisibility", 2));  // Window.Windowed
+    QVERIFY(QMetaObject::invokeMethod(root, "restoreViewState"));
+    QVERIFY(root->setProperty("restoringLayout", false));
+    QCOMPARE(root->property("visibility").toInt(), 2);
+    // A real visibility change above recreates the window surface; wait
+    // until it is exposed again before asserting pixels.
+    QQuickWindow* window = qobject_cast<QQuickWindow*>(root);
+    QVERIFY(window);
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QVERIFY(library->setProperty("visible", true));
+    QVERIFY(source->setProperty("visible", true));
+    QVERIFY(program->setProperty("visible", true));
+    QVERIFY(inspector->setProperty("visible", true));
+    QVERIFY(timeline->setProperty("visible", true));
+    const double widened = root->property("width").toDouble() + 60.0;
+    QVERIFY(root->setProperty("width", widened));
+    QCOMPARE(root->property("width").toDouble(), widened);
+    QTest::qWait(200);
     QCOMPARE(library->property("width").toDouble(), 260.0);
     QCOMPARE(inspector->property("width").toDouble(), 240.0);
     QCOMPARE(timeline->property("height").toDouble(), 260.0);
@@ -527,6 +544,16 @@ class TestQmlLoad : public QObject {
     QCOMPARE(options->property("pendingZoom").toDouble(),
              timeline->property("pixelsPerSecond").toDouble());
 
+    // Startup mode is staged on open and persists on OK.
+    QVERIFY(settings->setProperty("startupMode", QString("last")));
+    QVERIFY(QMetaObject::invokeMethod(options, "close"));
+    QVERIFY(QMetaObject::invokeMethod(options, "open"));
+    QTest::qWait(100);
+    QCOMPARE(options->property("pendingStartupMode").toString(), QString("last"));
+    QVERIFY(options->setProperty("pendingStartupMode", QString("new")));
+    QVERIFY(QMetaObject::invokeMethod(options, "applyOptions"));
+    QCOMPARE(settings->property("startupMode").toString(), QString("new"));
+
     // OK applies staged zoom and clears recents.
     QVERIFY(QMetaObject::invokeMethod(root, "addRecentProject",
                                       Q_ARG(QVariant, QString("/tmp/keep.reels.json"))));
@@ -550,6 +577,59 @@ class TestQmlLoad : public QObject {
     QVERIFY(options->setProperty("pendingZoom", 5000.0));
     QVERIFY(QMetaObject::invokeMethod(options, "applyOptions"));
     QCOMPARE(timeline->property("pixelsPerSecond").toDouble(), 800.0);
+
+    QTest::qWait(200);
+    QVERIFY2(errors.isEmpty(), qPrintable(QString("QML warnings:\n%1").arg(errors.join("\n"))));
+  }
+
+  // Startup mode: "last" reopens the previous project, a stale path falls
+  // back to untitled and is forgotten, "new" never auto-loads.
+  void startupMode_loadsPreviousProject() {
+    TimelineEngine engine;
+    QQmlApplicationEngine qmlEngine;
+    setupEngine(&qmlEngine, &engine);
+    QStringList errors;
+    watchWarnings(&qmlEngine, &errors);
+    qmlEngine.load(QStringLiteral("qrc:/qml/Main.qml"));
+    QVERIFY(!qmlEngine.rootObjects().isEmpty());
+    QObject* root = qmlEngine.rootObjects().first();
+    QObject* settings = root->findChild<QObject*>(QStringLiteral("appSettings"));
+    QVERIFY(settings);
+
+    // Seed + save a real project (URL form, like production file dialogs).
+    QMetaObject::invokeMethod(&engine, "onLoaded", Q_ARG(QString, QString("/clips/a.mp4")),
+                              Q_ARG(double, 10.0), Q_ARG(int, 640), Q_ARG(int, 480),
+                              Q_ARG(bool, false), Q_ARG(double, 16.0 / 9.0));
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QVERIFY(engine.saveProject(dir.filePath("prev.reels.json")));
+    const QString fileUrl = QUrl::fromLocalFile(dir.filePath("prev.reels.json")).toString();
+
+    // Stale path first (fresh engine is untitled): stays untitled and the
+    // dead entry is forgotten.
+    QVERIFY(settings->setProperty("startupMode", QString("last")));
+    QVERIFY(settings->setProperty(
+        "lastProjectPath",
+        QUrl::fromLocalFile("/tmp/definitely-missing-primoreels.reels.json").toString()));
+    QVERIFY(QMetaObject::invokeMethod(root, "applyStartupMode"));
+    QCOMPARE(root->property("currentProjectPath").toString(), QString(""));
+    QCOMPARE(settings->property("lastProjectPath").toString(), QString(""));
+
+    // "new" mode never auto-loads, even with a valid previous path.
+    QVERIFY(settings->setProperty("startupMode", QString("new")));
+    QVERIFY(settings->setProperty("lastProjectPath", fileUrl));
+    QVERIFY(QMetaObject::invokeMethod(root, "applyStartupMode"));
+    QCOMPARE(root->property("currentProjectPath").toString(), QString(""));
+
+    // "last" mode reopens the previous project.
+    QVERIFY(settings->setProperty("startupMode", QString("last")));
+    QVERIFY(QMetaObject::invokeMethod(root, "applyStartupMode"));
+    QCOMPARE(root->property("currentProjectPath").toString(), fileUrl);
+    QCOMPARE(engine.mediaList().size(), 1);
+
+    // Leave clean defaults behind (Settings persist to disk in tests too).
+    QVERIFY(settings->setProperty("startupMode", QString("new")));
+    QVERIFY(settings->setProperty("lastProjectPath", QString("")));
 
     QTest::qWait(200);
     QVERIFY2(errors.isEmpty(), qPrintable(QString("QML warnings:\n%1").arg(errors.join("\n"))));

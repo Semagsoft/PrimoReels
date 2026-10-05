@@ -74,6 +74,26 @@ ApplicationWindow {
         if (timelineEngine.loadProject(path)) {
             currentProjectPath = path;
             addRecentProject(path);
+            appSettings.lastProjectPath = path;
+        }
+    }
+
+    // Startup behavior (Options dialog): reopen the previous project when
+    // configured, otherwise start untitled (default). A stale/missing path
+    // is forgotten so the next launch does not retry a dead entry.
+    function applyStartupMode() {
+        if (appSettings.startupMode !== "last") {
+            return;
+        }
+        var path = appSettings.lastProjectPath;
+        if (path && path.length > 0) {
+            if (timelineEngine.loadProject(path)) {
+                currentProjectPath = path;
+                addRecentProject(path);
+                return;
+            }
+            appSettings.lastProjectPath = "";
+            root.showError(qsTr("Could not load previous project; starting untitled."));
         }
     }
 
@@ -146,6 +166,9 @@ ApplicationWindow {
         id: appSettings
         objectName: "appSettings"
         property var recentProjects: []
+        // Startup behavior: "new" (untitled, default) or "last" (reopen).
+        property string startupMode: "new"
+        property string lastProjectPath: ""
         // View layout (persisted between runs; defaults = first-run layout).
         property bool showLibrary: true
         property bool showSource: true
@@ -242,7 +265,11 @@ ApplicationWindow {
         root.width = Math.max(800, appSettings.winWidth || 1280);
         root.height = Math.max(500, appSettings.winHeight || 720);
         var vis = appSettings.winVisibility || Window.Windowed;
-        if (vis === Window.Windowed || vis === Window.Maximized || vis === Window.FullScreen) {
+        // Assign only on a real change: touching visibility recreates the
+        // window surface (visible flicker in production, frozen layout in
+        // tests), so a redundant write is not free.
+        if ((vis === Window.Windowed || vis === Window.Maximized || vis === Window.FullScreen)
+                && root.visibility !== vis) {
             root.visibility = vis;
         }
         libraryPanel.visible = appSettings.showLibrary !== false;
@@ -271,7 +298,10 @@ ApplicationWindow {
         root.flashStatus(qsTr("Layout reset to defaults."));
     }
 
-    Component.onCompleted: restoreViewState()
+    Component.onCompleted: {
+        restoreViewState();
+        applyStartupMode();
+    }
 
     // Global Play shortcut that yields to text editing (search, titles).
     Shortcut {
@@ -698,6 +728,7 @@ ApplicationWindow {
             if (timelineEngine.saveProject(path)) {
                 currentProjectPath = path;
                 addRecentProject(path);
+                appSettings.lastProjectPath = path;
                 if (pendingQuit) {
                     pendingQuit = false;
                     quittingAllowed = true;
@@ -799,17 +830,21 @@ ApplicationWindow {
         standardButtons: Dialog.Ok | Dialog.Cancel
         // Staged state: edited here, applied to live settings only on OK.
         property real pendingZoom: 100
+        property string pendingStartupMode: "new"
         property bool pendingClearRecents: false
 
         function applyOptions() {
             timelinePanel.pixelsPerSecond = clampedZoom(pendingZoom);
+            appSettings.startupMode = pendingStartupMode === "last" ? "last" : "new";
             if (pendingClearRecents) {
                 appSettings.recentProjects = [];
+                appSettings.lastProjectPath = "";
             }
         }
 
         onOpened: {
             pendingZoom = timelinePanel.pixelsPerSecond;
+            pendingStartupMode = appSettings.startupMode === "last" ? "last" : "new";
             pendingClearRecents = false;
         }
         onAccepted: applyOptions()
@@ -853,6 +888,21 @@ ApplicationWindow {
                     optionsDialog.pendingZoom = timelinePanel.pixelsPerSecond;
                 }
             }
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("On startup")
+                color: "#ffffff"
+                font.pointSize: 10
+            }
+            ComboBox {
+                Layout.fillWidth: true
+                model: [qsTr("New Untitled Project"), qsTr("Load Previous Project")]
+                currentIndex: optionsDialog.pendingStartupMode === "last" ? 1 : 0
+                Accessible.name: qsTr("On startup")
+                // activated (not currentIndexChanged): user choice only, so
+                // staging updates from onOpened never write back.
+                onActivated: optionsDialog.pendingStartupMode = index === 1 ? "last" : "new"
+            }
             CheckBox {
                 Layout.fillWidth: true
                 text: qsTr("Clear recent projects on OK")
@@ -874,6 +924,7 @@ ApplicationWindow {
                 if (currentProjectPath.length > 0) {
                     if (timelineEngine.saveProject(currentProjectPath)) {
                         addRecentProject(currentProjectPath);
+                        appSettings.lastProjectPath = currentProjectPath;
                         unsavedContinue();
                     }
                 } else {
