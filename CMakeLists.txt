@@ -126,7 +126,7 @@ if(BUILD_TESTING)
     add_executable(QmlLoadTests tests/TestQmlLoad.cpp qml.qrc)
     target_compile_options(QmlLoadTests PRIVATE -Wall -Wextra -Wpedantic)
     target_link_libraries(QmlLoadTests PRIVATE PrimoReelsLib Qt6::Test)
-    primoreels_add_test(QmlLoadTests QmlLoadTests 120 "unit" mainWindow_loads mainWindow_interaction dialogs_existAndConfigured layout_saveRestoreReset timeline_dndRulerPlayhead timeline_a1Interactions library_catalogsAndTabs recentsAndTitle)
+    primoreels_add_test(QmlLoadTests QmlLoadTests 120 "unit" mainWindow_loads mainWindow_interaction dialogs_existAndConfigured layout_saveRestoreReset timeline_dndRulerPlayhead timeline_a1Interactions library_catalogsAndTabs recentsAndTitle optionsDialog_appliesOnOk)
 endif()
 
 set(CPACK_PACKAGE_NAME "primoreels")

@@ -439,6 +439,11 @@ ApplicationWindow {
                 enabled: timelineEngine.duration > 0
                 onTriggered: timelineEngine.seek(timelineEngine.duration)
             }
+            MenuSeparator {}
+            Action {
+                text: qsTr("&Options…")
+                onTriggered: optionsDialog.open()
+            }
         }
         Menu {
             title: qsTr("&Help")
@@ -781,6 +786,80 @@ ApplicationWindow {
         function onExportSucceeded(path) {
             var name = decodeURIComponent(String(path).split('/').pop());
             root.flashStatus(qsTr("Export finished: %1").arg(name))
+        }
+    }
+
+    Dialog {
+        id: optionsDialog
+        objectName: "optionsDialog"
+        title: qsTr("Options")
+        modal: true
+        anchors.centerIn: parent
+        implicitWidth: 380
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        // Staged state: edited here, applied to live settings only on OK.
+        property real pendingZoom: 100
+        property bool pendingClearRecents: false
+
+        function applyOptions() {
+            timelinePanel.pixelsPerSecond = clampedZoom(pendingZoom);
+            if (pendingClearRecents) {
+                appSettings.recentProjects = [];
+            }
+        }
+
+        onOpened: {
+            pendingZoom = timelinePanel.pixelsPerSecond;
+            pendingClearRecents = false;
+        }
+        onAccepted: applyOptions()
+
+        ColumnLayout {
+            spacing: 10
+
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("Timeline zoom")
+                color: "#ffffff"
+                font.pointSize: 10
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Slider {
+                    Layout.fillWidth: true
+                    from: 10
+                    to: 800
+                    value: optionsDialog.pendingZoom
+                    Accessible.name: qsTr("Timeline zoom")
+                    onMoved: optionsDialog.pendingZoom = value
+                }
+                SpinBox {
+                    from: 10
+                    to: 800
+                    value: Math.round(optionsDialog.pendingZoom)
+                    Accessible.name: qsTr("Timeline zoom value")
+                    // valueModified (not valueChanged): user edits only, so
+                    // binding updates from the slider never write back.
+                    onValueModified: optionsDialog.pendingZoom = value
+                }
+            }
+            Button {
+                Layout.fillWidth: true
+                text: qsTr("Reset Layout to Defaults")
+                Accessible.name: qsTr("Reset layout to defaults")
+                onClicked: {
+                    root.resetLayout();
+                    optionsDialog.pendingZoom = timelinePanel.pixelsPerSecond;
+                }
+            }
+            CheckBox {
+                Layout.fillWidth: true
+                text: qsTr("Clear recent projects on OK")
+                checked: optionsDialog.pendingClearRecents
+                Accessible.name: qsTr("Clear recent projects on OK")
+                onToggled: optionsDialog.pendingClearRecents = checked
+            }
         }
     }
 

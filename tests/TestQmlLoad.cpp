@@ -503,6 +503,58 @@ class TestQmlLoad : public QObject {
     QVERIFY2(errors.isEmpty(), qPrintable(QString("QML warnings:\n%1").arg(errors.join("\n"))));
   }
 
+  // Options dialog: staged controls apply on OK, discard on Cancel.
+  void optionsDialog_appliesOnOk() {
+    TimelineEngine engine;
+    QQmlApplicationEngine qmlEngine;
+    setupEngine(&qmlEngine, &engine);
+    QStringList errors;
+    watchWarnings(&qmlEngine, &errors);
+    qmlEngine.load(QStringLiteral("qrc:/qml/Main.qml"));
+    QVERIFY(!qmlEngine.rootObjects().isEmpty());
+    QObject* root = qmlEngine.rootObjects().first();
+    QObject* options = root->findChild<QObject*>(QStringLiteral("optionsDialog"));
+    QObject* timeline = root->findChild<QObject*>(QStringLiteral("timelinePanel"));
+    QObject* settings = root->findChild<QObject*>(QStringLiteral("appSettings"));
+    QVERIFY(options && timeline && settings);
+    QVERIFY(options->property("modal").toBool());
+    QVERIFY(!options->property("title").toString().isEmpty());
+
+    // Opening stages live state into the dialog.
+    QVERIFY(QMetaObject::invokeMethod(options, "open"));
+    QTest::qWait(100);
+    QVERIFY(options->property("visible").toBool());
+    QCOMPARE(options->property("pendingZoom").toDouble(),
+             timeline->property("pixelsPerSecond").toDouble());
+
+    // OK applies staged zoom and clears recents.
+    QVERIFY(QMetaObject::invokeMethod(root, "addRecentProject",
+                                      Q_ARG(QVariant, QString("/tmp/keep.reels.json"))));
+    QVERIFY(options->setProperty("pendingZoom", 250.0));
+    QVERIFY(options->setProperty("pendingClearRecents", true));
+    QVERIFY(QMetaObject::invokeMethod(options, "applyOptions"));
+    QVERIFY(QMetaObject::invokeMethod(options, "close"));
+    QCOMPARE(timeline->property("pixelsPerSecond").toDouble(), 250.0);
+    QCOMPARE(settings->property("timelineZoom").toDouble(), 250.0);
+    QCOMPARE(settings->property("recentProjects").toStringList().size(), 0);
+
+    // Cancel path: staging without apply leaves settings untouched.
+    QVERIFY(QMetaObject::invokeMethod(options, "open"));
+    QTest::qWait(100);
+    QVERIFY(options->setProperty("pendingZoom", 400.0));
+    QVERIFY(QMetaObject::invokeMethod(options, "close"));
+    QCOMPARE(timeline->property("pixelsPerSecond").toDouble(), 250.0);
+    QCOMPARE(settings->property("timelineZoom").toDouble(), 250.0);
+
+    // Out-of-range zoom is clamped, never applied raw.
+    QVERIFY(options->setProperty("pendingZoom", 5000.0));
+    QVERIFY(QMetaObject::invokeMethod(options, "applyOptions"));
+    QCOMPARE(timeline->property("pixelsPerSecond").toDouble(), 800.0);
+
+    QTest::qWait(200);
+    QVERIFY2(errors.isEmpty(), qPrintable(QString("QML warnings:\n%1").arg(errors.join("\n"))));
+  }
+
  private:
   void setupEngine(QQmlApplicationEngine* qmlEngine, TimelineEngine* engine) {
     qmlEngine->rootContext()->setContextProperty("timelineEngine", engine);
