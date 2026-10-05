@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtQuick.Window
 import QtCore
 
 ApplicationWindow {
@@ -31,6 +32,10 @@ ApplicationWindow {
     property bool pendingQuit: false
     property bool pendingNew: false
     property bool quittingAllowed: false
+    // While true, saveViewState() is a no-op: the transient width/height
+    // events fired by restoreViewState() itself (window resize, SplitView
+    // redistribution) must not overwrite the persisted layout they restore.
+    property bool restoringLayout: false
 
     function doNewProject() {
         timelineEngine.newProject();
@@ -125,11 +130,17 @@ ApplicationWindow {
             requestQuit();
             return;
         }
+        // A real quit always persists: drop the restore guard (a close
+        // within 600 ms of launch would otherwise skip the save, and the
+        // settings already hold the restored values anyway).
+        root.restoringLayout = false;
+        restoreGuardTimer.stop();
         root.saveViewState();
     }
 
     onWidthChanged: viewSaveTimer.restart()
     onHeightChanged: viewSaveTimer.restart()
+    onVisibilityChanged: viewSaveTimer.restart()
 
     Settings {
         id: appSettings
@@ -150,6 +161,7 @@ ApplicationWindow {
         property real timelineHeight: 250
         property real winWidth: 1280
         property real winHeight: 720
+        property int winVisibility: Window.Windowed
     }
 
     // Debounced writer: drag-resizing fires width/height changes per pixel.
@@ -160,9 +172,25 @@ ApplicationWindow {
         onTriggered: root.saveViewState()
     }
 
+    // Clears restoringLayout once a programmatic restore has settled. Must
+    // outlive viewSaveTimer (500 ms) so any debounced save fired by
+    // restore-driven resizes is still suppressed when it runs.
+    Timer {
+        id: restoreGuardTimer
+        interval: 600
+        repeat: false
+        onTriggered: root.restoringLayout = false
+    }
+
     function clampedZoom(z) { return Math.max(10, Math.min(800, z || 100)); }
 
     function saveViewState() {
+        // Ignored while a programmatic restore is settling (see
+        // restoreGuardTimer): startup resize/SplitView transients must not
+        // overwrite the persisted layout they just restored.
+        if (root.restoringLayout) {
+            return;
+        }
         appSettings.showLibrary = libraryPanel.visible;
         appSettings.showSource = sourceMonitorPanel.visible;
         appSettings.showProgram = programMonitorPanel.visible;
@@ -185,13 +213,38 @@ ApplicationWindow {
         if (timelinePanel.visible) {
             appSettings.timelineHeight = timelinePanel.height;
         }
-        appSettings.winWidth = root.width;
-        appSettings.winHeight = root.height;
+        // Window state: normal geometry only when windowed (a maximized
+        // window reports its maximized size, not the geometry to restore
+        // when un-maximized); visibility whenever it is meaningful.
+        if (root.visibility === Window.Windowed) {
+            appSettings.winWidth = root.width;
+            appSettings.winHeight = root.height;
+        }
+        if (root.visibility === Window.Windowed || root.visibility === Window.Maximized
+                || root.visibility === Window.FullScreen) {
+            appSettings.winVisibility = root.visibility;
+        }
     }
 
     function restoreViewState() {
+        // Suppress the debounced saver while the programmatic restore
+        // settles; cleared by restoreGuardTimer (longer than viewSaveTimer).
+        root.restoringLayout = true;
+        restoreGuardTimer.restart();
+        // Sizes go through appSettings (single source of truth): the
+        // SplitView.preferredWidth/Height bindings track these, so panels
+        // update without breaking their bindings.
+        appSettings.libraryWidth = Math.max(200, appSettings.libraryWidth || 250);
+        appSettings.sourceWidth = Math.max(200, appSettings.sourceWidth || 300);
+        appSettings.programWidth = Math.max(300, appSettings.programWidth || 500);
+        appSettings.inspectorWidth = Math.max(180, appSettings.inspectorWidth || 230);
+        appSettings.timelineHeight = Math.max(150, appSettings.timelineHeight || 250);
         root.width = Math.max(800, appSettings.winWidth || 1280);
         root.height = Math.max(500, appSettings.winHeight || 720);
+        var vis = appSettings.winVisibility || Window.Windowed;
+        if (vis === Window.Windowed || vis === Window.Maximized || vis === Window.FullScreen) {
+            root.visibility = vis;
+        }
         libraryPanel.visible = appSettings.showLibrary !== false;
         sourceMonitorPanel.visible = appSettings.showSource !== false;
         programMonitorPanel.visible = appSettings.showProgram !== false;
@@ -199,13 +252,6 @@ ApplicationWindow {
         timelinePanel.visible = appSettings.showTimeline !== false;
         timelinePanel.pixelsPerSecond = clampedZoom(appSettings.timelineZoom);
         libraryPanel.activeTab = Math.max(0, Math.min(3, appSettings.libraryTab || 0));
-        // Restore persisted split sizes (resetLayout writes these, so a
-        // reset applies immediately instead of only after a restart).
-        libraryPanel.SplitView.preferredWidth = Math.max(200, appSettings.libraryWidth || 250);
-        sourceMonitorPanel.SplitView.preferredWidth = Math.max(200, appSettings.sourceWidth || 300);
-        programMonitorPanel.SplitView.preferredWidth = Math.max(300, appSettings.programWidth || 500);
-        inspectorPanel.SplitView.preferredWidth = Math.max(180, appSettings.inspectorWidth || 230);
-        timelinePanel.SplitView.preferredHeight = Math.max(150, appSettings.timelineHeight || 250);
     }
 
     function resetLayout() {

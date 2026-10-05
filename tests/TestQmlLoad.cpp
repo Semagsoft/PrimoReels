@@ -217,11 +217,80 @@ class TestQmlLoad : public QObject {
     QVERIFY(settings->property("showLibrary").toBool());
     QVERIFY(settings->property("showTimeline").toBool());
 
-    // View toggles via panel visibility persist on save.
+    // View toggles via panel visibility persist on save. The restore guard
+    // is active right after resetLayout(); clear it so saveViewState takes
+    // effect deterministically instead of depending on the 600 ms timer.
+    QVERIFY(root->setProperty("restoringLayout", false));
+    QObject* source = root->findChild<QObject*>(QStringLiteral("sourceMonitorPanel"));
+    QObject* program = root->findChild<QObject*>(QStringLiteral("programMonitorPanel"));
+    QObject* inspector = root->findChild<QObject*>(QStringLiteral("inspectorPanel"));
+    QVERIFY(source && program && inspector);
     QVERIFY(library->setProperty("visible", false));
+    QVERIFY(source->setProperty("visible", false));
+    QVERIFY(program->setProperty("visible", false));
+    QVERIFY(inspector->setProperty("visible", false));
+    QVERIFY(timeline->setProperty("visible", false));
     QVERIFY(QMetaObject::invokeMethod(root, "saveViewState"));
     QCOMPARE(settings->property("showLibrary").toBool(), false);
+    QCOMPARE(settings->property("showSource").toBool(), false);
+    QCOMPARE(settings->property("showProgram").toBool(), false);
+    QCOMPARE(settings->property("showInspector").toBool(), false);
+    QCOMPARE(settings->property("showTimeline").toBool(), false);
+
+    // Restore brings every hidden panel back exactly as persisted.
+    QVERIFY(QMetaObject::invokeMethod(root, "restoreViewState"));
+    QVERIFY(!library->property("visible").toBool());
+    QVERIFY(!source->property("visible").toBool());
+    QVERIFY(!program->property("visible").toBool());
+    QVERIFY(!inspector->property("visible").toBool());
+    QVERIFY(!timeline->property("visible").toBool());
+
+    // Restore guard: a save requested while restoring is ignored, so the
+    // transient SplitView resizes fired by the restore itself can never
+    // overwrite the persisted sizes they just restored.
+    QVERIFY(root->property("restoringLayout").toBool());
+    QVERIFY(settings->setProperty("libraryWidth", 321.0));
+    QVERIFY(QMetaObject::invokeMethod(root, "restoreViewState"));
+    QVERIFY(QMetaObject::invokeMethod(root, "saveViewState"));
+    QCOMPARE(settings->property("libraryWidth").toDouble(), 321.0);
+    QVERIFY(root->setProperty("restoringLayout", false));
+
+    // Sizes written to settings flow to the panels through the
+    // SplitView.preferredWidth/Height bindings (restore must not break them).
+    // Re-show everything first (hidden panels report width 0) and widen the
+    // window so preferred sizes fit without SplitView shrinking them; the
+    // fillWidth monitors then only need to meet their minimums.
     QVERIFY(library->setProperty("visible", true));
+    QVERIFY(source->setProperty("visible", true));
+    QVERIFY(program->setProperty("visible", true));
+    QVERIFY(inspector->setProperty("visible", true));
+    QVERIFY(timeline->setProperty("visible", true));
+    QVERIFY(root->setProperty("width", 2000));
+    QVERIFY(QMetaObject::invokeMethod(root, "saveViewState"));
+    QVERIFY(settings->setProperty("libraryWidth", 260.0));
+    QVERIFY(settings->setProperty("sourceWidth", 310.0));
+    QVERIFY(settings->setProperty("programWidth", 510.0));
+    QVERIFY(settings->setProperty("inspectorWidth", 240.0));
+    QVERIFY(settings->setProperty("timelineHeight", 260.0));
+    QTest::qWait(100);
+    QCOMPARE(library->property("width").toDouble(), 260.0);
+    QCOMPARE(inspector->property("width").toDouble(), 240.0);
+    QCOMPARE(timeline->property("height").toDouble(), 260.0);
+    QVERIFY(source->property("width").toDouble() >= 200.0);
+    QVERIFY(program->property("width").toDouble() >= 300.0);
+
+    // Window geometry persists on save; visibility restores on demand.
+    QVERIFY(QMetaObject::invokeMethod(root, "saveViewState"));
+    QVERIFY(settings->property("winWidth").toDouble() >= 800.0);
+    QVERIFY(settings->property("winHeight").toDouble() >= 500.0);
+    QVERIFY(settings->property("winVisibility").toInt() >= 2);
+    QVERIFY(settings->setProperty("winVisibility", 2));  // Window.Windowed
+    QVERIFY(QMetaObject::invokeMethod(root, "restoreViewState"));
+    QCOMPARE(root->property("visibility").toInt(), 2);
+
+    // Leave clean defaults behind (Settings persist to disk in tests too).
+    QVERIFY(QMetaObject::invokeMethod(root, "resetLayout"));
+    QVERIFY(root->setProperty("restoringLayout", false));
 
     QTest::qWait(200);
     QVERIFY2(errors.isEmpty(), qPrintable(QString("QML warnings:\n%1").arg(errors.join("\n"))));
