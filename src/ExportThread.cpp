@@ -332,20 +332,54 @@ bool ExportThread::runExport(const QVariantList& clips,
     }
   }
   const int fps = qRound(fpsD);
-  QString videoCodecName = QStringLiteral("libx264");
+  // Container -> default codec mapping. When the user doesn't specify a
+  // codec, the container's default is used so that WebM gets VP9/Opus,
+  // AVI gets MPEG-4/MP3, etc. without manual pairing.
+  struct ContainerDefaults {
+    const char* container;
+    const char* defaultVideoCodec;
+    const char* defaultAudioCodec;
+  };
+  static constexpr ContainerDefaults kContainerDefaults[] = {
+      {"mp4", "libx264", "aac"},      {"mkv", "libx264", "aac"}, {"mov", "libx264", "aac"},
+      {"webm", "libvpx-vp9", "opus"}, {"avi", "mpeg4", "mp3"},
+  };
+  QString container = QStringLiteral("mp4");
+  {
+    const QVariant v = settings.value(QStringLiteral("container"));
+    if (v.isValid()) {
+      container = v.toString();
+    }
+  }
+  // Look up container defaults.
+  const char* defaultVideoCodec = "libx264";
+  const char* defaultAudioCodec = "aac";
+  for (const auto& cd : kContainerDefaults) {
+    if (container == QLatin1String(cd.container)) {
+      defaultVideoCodec = cd.defaultVideoCodec;
+      defaultAudioCodec = cd.defaultAudioCodec;
+      break;
+    }
+  }
+  QString videoCodecName;
   {
     const QVariant v = settings.value(QStringLiteral("videoCodec"));
-    if (v.isValid()) {
+    if (v.isValid() && !v.toString().isEmpty()) {
       videoCodecName = v.toString();
     }
   }
-  const bool wantX264 = videoCodecName == QLatin1String("libx264");
-  QString audioCodecName = QStringLiteral("aac");
+  if (videoCodecName.isEmpty()) {
+    videoCodecName = QLatin1String(defaultVideoCodec);
+  }
+  QString audioCodecName;
   {
     const QVariant v = settings.value(QStringLiteral("audioCodec"));
-    if (v.isValid()) {
+    if (v.isValid() && !v.toString().isEmpty()) {
       audioCodecName = v.toString();
     }
+  }
+  if (audioCodecName.isEmpty()) {
+    audioCodecName = QLatin1String(defaultAudioCodec);
   }
   const bool wantAudio = !audioCodecName.isEmpty();
   int64_t videoBitRate = 0;
@@ -360,13 +394,6 @@ bool ExportThread::runExport(const QVariantList& clips,
     const QVariant v = settings.value(QStringLiteral("audioBitRate"));
     if (v.isValid()) {
       audioBitRate = v.toLongLong();
-    }
-  }
-  QString container = QStringLiteral("mp4");
-  {
-    const QVariant v = settings.value(QStringLiteral("container"));
-    if (v.isValid()) {
-      container = v.toString();
     }
   }
 
@@ -482,12 +509,9 @@ bool ExportThread::runExport(const QVariantList& clips,
   }
 
   // --- Video stream ---
-  const AVCodec* videoCodec = wantX264 ? avcodec_find_encoder_by_name("libx264") : nullptr;
+  const AVCodec* videoCodec = avcodec_find_encoder_by_name(videoCodecName.toLatin1().constData());
   if (!videoCodec) {
-    videoCodec = avcodec_find_encoder(AV_CODEC_ID_MPEG4);
-  }
-  if (!videoCodec && wantX264) {
-    // libx264 requested but missing: fall back to MPEG4 so the export
+    // Requested encoder unavailable: fall back to MPEG-4 so the export
     // still succeeds instead of failing hard.
     videoCodec = avcodec_find_encoder(AV_CODEC_ID_MPEG4);
   }
@@ -511,7 +535,7 @@ bool ExportThread::runExport(const QVariantList& clips,
   if (oc->oformat->flags & AVFMT_GLOBALHEADER) {
     videoEnc->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
   }
-  if (wantX264) {
+  if (videoCodecName == QLatin1String("libx264") || videoCodecName == QLatin1String("libx265")) {
     av_opt_set(videoEnc->priv_data, "preset", "veryfast", 0);
     av_opt_set(videoEnc->priv_data, "crf", "23", 0);
   } else if (videoBitRate > 0) {
@@ -531,6 +555,10 @@ bool ExportThread::runExport(const QVariantList& clips,
     AVCodecID audioCodecId = AV_CODEC_ID_AAC;
     if (audioCodecName == QLatin1String("mp3")) {
       audioCodecId = AV_CODEC_ID_MP3;
+    } else if (audioCodecName == QLatin1String("opus")) {
+      audioCodecId = AV_CODEC_ID_OPUS;
+    } else if (audioCodecName == QLatin1String("flac")) {
+      audioCodecId = AV_CODEC_ID_FLAC;
     }
     const AVCodec* audioCodec = avcodec_find_encoder(audioCodecId);
     AVCodecContext* enc = audioCodec ? avcodec_alloc_context3(audioCodec) : nullptr;

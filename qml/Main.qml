@@ -854,6 +854,53 @@ ApplicationWindow {
                 spacing: 10
 
                 Label {
+                    text: qsTr("Container")
+                    color: "#cccccc"
+                    font.pointSize: 9
+                    Layout.preferredWidth: 100
+                    Accessible.name: qsTr("Export container")
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    model: [qsTr("MP4"), qsTr("MKV"), qsTr("MOV"), qsTr("WebM"), qsTr("AVI")]
+                    currentIndex: 0
+                    Accessible.name: qsTr("Export container")
+                    onActivated: {
+                        exportDialog.exportSettings.container =
+                            index === 0 ? "mp4" : index === 1 ? "mkv" :
+                            index === 2 ? "mov" : index === 3 ? "webm" : "avi";
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Label {
+                    text: qsTr("Video codec")
+                    color: "#cccccc"
+                    font.pointSize: 9
+                    Layout.preferredWidth: 100
+                    Accessible.name: qsTr("Export video codec")
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    model: [qsTr("H.264"), qsTr("H.265 / HEVC"), qsTr("MPEG-4")]
+                    currentIndex: 0
+                    Accessible.name: qsTr("Export video codec")
+                    onActivated: {
+                        exportDialog.exportSettings.videoCodec =
+                            index === 0 ? "libx264" : index === 1 ? "libx265" : "mpeg4";
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Label {
                     text: qsTr("Frame rate (fps)")
                     color: "#cccccc"
                     font.pointSize: 9
@@ -905,12 +952,13 @@ ApplicationWindow {
                 }
                 ComboBox {
                     Layout.fillWidth: true
-                    model: [qsTr("AAC"), qsTr("MP3"), qsTr("None")]
+                    model: [qsTr("AAC"), qsTr("MP3"), qsTr("Opus"), qsTr("FLAC"), qsTr("None")]
                     currentIndex: 0
                     Accessible.name: qsTr("Export audio codec")
                     onActivated: {
                         exportDialog.exportSettings.audioCodec =
-                            index === 0 ? "aac" : index === 1 ? "mp3" : "";
+                            index === 0 ? "aac" : index === 1 ? "mp3" :
+                            index === 2 ? "opus" : index === 3 ? "flac" : "";
                     }
                 }
             }
