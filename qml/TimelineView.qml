@@ -12,6 +12,16 @@ Rectangle {
     property int selectedClipIndex: -1
     property int contextClipIndex: -1
     property real pixelsPerSecond: 100
+    // When true, ruler clicks, playhead drags, and overlay/A1 drags snap
+    // to the ruler grid (multiples of rulerStep).
+    property bool snappingEnabled: false
+    // Snap a time to the ruler grid when snapping is enabled.
+    function snapTime(t) {
+        if (!snappingEnabled || rulerStep <= 0) {
+            return t;
+        }
+        return Math.round(t / rulerStep) * rulerStep;
+    }
     // Reactive mirrors of selectedClip()/canSplitAtPlayhead(): bindings that
     // call JS functions only re-evaluate when a dependency emits, so expose
     // the same state as plain properties with explicit dependencies.
@@ -369,6 +379,17 @@ Rectangle {
                 }
             }
             Button {
+                text: snappingEnabled ? qsTr("Snap ✓") : qsTr("Snap")
+                checkable: true
+                checked: snappingEnabled
+                font.pointSize: 9
+                focusPolicy: Qt.NoFocus
+                Accessible.name: qsTr("Toggle timeline snapping")
+                ToolTip.text: qsTr("Snap playhead and clips to the ruler grid")
+                ToolTip.visible: hovered
+                onToggled: snappingEnabled = checked
+            }
+            Button {
                 text: qsTr("Zoom -")
                 font.pointSize: 9
                 focusPolicy: Qt.NoFocus
@@ -602,7 +623,7 @@ Rectangle {
                         Accessible.role: Accessible.Slider
                         Accessible.name: qsTr("Timeline ruler. Left and right arrows seek.")
                         onClicked: function(mouse) {
-                            var t = (mouse.x - trackOrigin) / pixelsPerSecond;
+                            var t = timelineRoot.snapTime((mouse.x - trackOrigin) / pixelsPerSecond);
                             timelineEngine.seek(Math.max(0, Math.min(t, timelineDuration)));
                         }
                         // Only a subset of keys has Keys.on<Name>Pressed
@@ -936,7 +957,7 @@ Rectangle {
                                 yAxis.enabled: false
                                 onActiveChanged: {
                                     if (!active) {
-                                        var newStart = Math.max(0, (parent.x - trackOrigin) / pixelsPerSecond);
+                                        var newStart = Math.max(0, timelineRoot.snapTime((parent.x - trackOrigin) / pixelsPerSecond));
                                         timelineEngine.setClipStartTime(index, newStart);
                                     }
                                 }
@@ -1148,7 +1169,7 @@ Rectangle {
                                 enabled: (model.track || 0) === 2
                                 onActiveChanged: {
                                     if (!active) {
-                                        var newStart = Math.max(0, (parent.x - trackOrigin) / pixelsPerSecond);
+                                        var newStart = Math.max(0, timelineRoot.snapTime((parent.x - trackOrigin) / pixelsPerSecond));
                                         timelineEngine.setClipStartTime(index, newStart);
                                     }
                                 }
@@ -1233,7 +1254,7 @@ Rectangle {
                         function scrubTo(mouseX) {
                             // MouseArea is centered on the playhead line:
                             // center (width/2) maps to parent.x.
-                            var t = (parent.x + (mouseX - width / 2) - trackOrigin) / pixelsPerSecond;
+                            var t = timelineRoot.snapTime((parent.x + (mouseX - width / 2) - trackOrigin) / pixelsPerSecond);
                             timelineEngine.seek(Math.max(0, Math.min(t, timelineDuration)));
                         }
                         onPressed: function(mouse) { scrubTo(mouse.x); }
