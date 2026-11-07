@@ -17,8 +17,9 @@ QImage FrameImageProvider::requestImage(const QString& id,
   QImage frame;
   if (m_engine) {
     QString effect;
-    const QImage current = m_engine->currentFrameWithEffect(&effect);
-    frame = VideoEffects::apply(current, effect);
+    QVariantMap params;
+    const QImage current = m_engine->currentFrameWithEffect(&effect, &params);
+    frame = VideoEffects::apply(current, effect, params);
   }
   if (frame.isNull()) {
     frame = QImage(1, 1, QImage::Format_ARGB32);

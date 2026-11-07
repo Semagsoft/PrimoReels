@@ -74,6 +74,61 @@ Rectangle {
                         }
                     }
                 }
+                GroupBox {
+                    title: qsTr("Effect")
+                    Layout.fillWidth: true
+                    visible: selClip !== null && selClip.effect.length > 0
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 15
+
+                        Label {
+                            text: qsTr("Effect: %1").arg(selClip.effect)
+                            color: "#cccccc"
+                            font.pointSize: 9
+                            font.bold: true
+                        }
+
+                        Repeater {
+                            model: selClip && selClip.effect.length > 0
+                                ? timelineEngine.effectParamSpecs(selClip.effect) : []
+                            delegate: RowLayout {
+                                Label {
+                                    text: modelData.label
+                                    color: "#cccccc"
+                                    font.pointSize: 9
+                                    Layout.preferredWidth: 70
+                                    elide: Text.ElideRight
+                                    Accessible.name: modelData.label
+                                }
+                                Slider {
+                                    id: paramSlider
+                                    from: modelData.min
+                                    to: modelData.max
+                                    stepSize: modelData.step
+                                    // Don't fight the user while dragging.
+                                    value: paramSlider.pressed ? value
+                                        : (selClip.effectParams &&
+                                           selClip.effectParams[modelData.name] !== undefined
+                                           ? selClip.effectParams[modelData.name]
+                                           : modelData.def)
+                                    Accessible.name: modelData.label
+                                    onMoved:
+                                        timelineEngine.setClipEffectParam(selectedClipIndex,
+                                                                          modelData.name, value)
+                                }
+                                Label {
+                                    text: Number(paramSlider.value).toFixed(2)
+                                    color: "#ffffff"
+                                    font.pointSize: 8
+                                    Layout.preferredWidth: 40
+                                    Accessible.role: Accessible.StaticText
+                                }
+                            }
+                        }
+                    }
+                }
 
                 GroupBox {
                     title: qsTr("Audio")

@@ -917,6 +917,7 @@ TimelineEngine::ListSnapshot TimelineEngine::captureSnapshot() const {
   {
     QMutexLocker locker(&m_dataMutex);
     snapshot.activeEffect = m_activeEffect;
+    snapshot.activeEffectParams = m_activeEffectParams;
   }
   return snapshot;
 }
@@ -952,6 +953,7 @@ void TimelineEngine::applySnapshot(const ListSnapshot& snapshot) {
   {
     QMutexLocker locker(&m_dataMutex);
     m_activeEffect = snapshot.activeEffect;
+    m_activeEffectParams = snapshot.activeEffectParams;
   }
   if (m_currentSource != snapshot.currentSource) {
     m_currentSource = snapshot.currentSource;
@@ -1096,6 +1098,7 @@ QVariantMap TimelineEngine::buildTimelineClip(const QString& path) const {
   clip.insert(QStringLiteral("trimStart"), 0.0);
   clip.insert(QStringLiteral("trimEnd"), 0.0);
   clip.insert(QStringLiteral("effect"), QString());
+  clip.insert(QStringLiteral("effectParams"), QVariantMap());
   clip.insert(QStringLiteral("transition"), QString());
   clip.insert(QStringLiteral("transitionDuration"), 0.5);
   clip.insert(QStringLiteral("track"), 0);
@@ -1488,6 +1491,8 @@ void TimelineEngine::setClipEffect(int index, const QString& effectName) {
   }
   pushHistory();
   clip.insert(QStringLiteral("effect"), normalized);
+  // Changing the effect name resets its parameters to defaults.
+  clip.insert(QStringLiteral("effectParams"), QVariantMap());
   m_timelineClips[index] = clip;
   syncModels();
   emit timelineClipsChanged();
@@ -1495,6 +1500,80 @@ void TimelineEngine::setClipEffect(int index, const QString& effectName) {
     {
       QMutexLocker locker(&m_dataMutex);
       m_activeEffect = normalized;
+      m_activeEffectParams = clip.value(QStringLiteral("effectParams"), QVariantMap()).toMap();
+    }
+    refreshPreview();
+  }
+}
+
+QVariantMap TimelineEngine::activeEffectParams() const {
+  QMutexLocker locker(&m_dataMutex);
+  return m_activeEffectParams;
+}
+
+QVariantList TimelineEngine::effectParamSpecs(const QString& effectName) const {
+  QVariantList specs;
+  for (const EffectParamSpec& spec : VideoEffects::effectParamSpecs(effectName)) {
+    QVariantMap m;
+    m.insert(QStringLiteral("name"), spec.name);
+    m.insert(QStringLiteral("label"), spec.label);
+    m.insert(QStringLiteral("min"), spec.min);
+    m.insert(QStringLiteral("max"), spec.max);
+    m.insert(QStringLiteral("def"), spec.def);
+    m.insert(QStringLiteral("step"), spec.step);
+    specs.append(m);
+  }
+  return specs;
+}
+
+QVariantMap TimelineEngine::clipEffectParams(int index) const {
+  if (index < 0 || index >= m_timelineClips.size()) {
+    return QVariantMap();
+  }
+  return ClipUtils::clipEffectParams(m_timelineClips.at(index).toMap());
+}
+
+void TimelineEngine::setClipEffectParam(int index, const QString& paramName, double value) {
+  if (index < 0 || index >= m_timelineClips.size()) {
+    return;
+  }
+  QVariantMap clip = m_timelineClips.at(index).toMap();
+  QVariantMap params = ClipUtils::clipEffectParams(clip);
+  const double prev = ClipUtils::clipEffectParam(clip, paramName, 0.0);
+  if (qFuzzyCompare(prev + 1.0, value + 1.0)) {
+    return;
+  }
+  params.insert(paramName, value);
+  pushHistory();
+  clip.insert(QStringLiteral("effectParams"), params);
+  m_timelineClips[index] = clip;
+  syncModels();
+  emit timelineClipsChanged();
+  if (clip.value(QStringLiteral("path")).toString() == m_currentSource) {
+    {
+      QMutexLocker locker(&m_dataMutex);
+      m_activeEffectParams = params;
+    }
+    refreshPreview();
+  }
+}
+
+void TimelineEngine::setClipEffectParams(int index, const QVariantMap& params) {
+  if (index < 0 || index >= m_timelineClips.size()) {
+    return;
+  }
+  QVariantMap clip = m_timelineClips.at(index).toMap();
+  if (clip.value(QStringLiteral("effect")).toString().isEmpty()) {
+    return;
+  }
+  clip.insert(QStringLiteral("effectParams"), params);
+  m_timelineClips[index] = clip;
+  syncModels();
+  emit timelineClipsChanged();
+  if (clip.value(QStringLiteral("path")).toString() == m_currentSource) {
+    {
+      QMutexLocker locker(&m_dataMutex);
+      m_activeEffectParams = params;
     }
     refreshPreview();
   }
@@ -1592,6 +1671,7 @@ void TimelineEngine::previewTimelineClip(int index) {
   {
     QMutexLocker locker(&m_dataMutex);
     m_activeEffect = clip.value(QStringLiteral("effect")).toString();
+    m_activeEffectParams = clip.value(QStringLiteral("effectParams"), QVariantMap()).toMap();
   }
   m_seqStart = ClipUtils::clipTrimStart(clip);
   m_seqEnd = m_seqStart + clip.value(QStringLiteral("duration"), 0.0).toDouble();
@@ -2095,13 +2175,16 @@ QImage TimelineEngine::currentFrame() const {
   return m_currentFrame;
 }
 
-QImage TimelineEngine::currentFrameWithEffect(QString* effectOut) const {
+QImage TimelineEngine::currentFrameWithEffect(QString* effectOut, QVariantMap* paramsOut) const {
   // Fixed lock order (frame then data) so the render thread always gets a
-  // consistent frame/effect pair with no TOCTOU between two copies.
+  // consistent frame/effect/params pair with no TOCTOU between two copies.
   QMutexLocker l1(&m_frameMutex);
   QMutexLocker l2(&m_dataMutex);
   if (effectOut) {
     *effectOut = m_activeEffect;
+  }
+  if (paramsOut) {
+    *paramsOut = m_activeEffectParams;
   }
   return m_currentFrame;
 }

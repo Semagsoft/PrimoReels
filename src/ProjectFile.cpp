@@ -161,6 +161,23 @@ bool load(const QString& filePath, Data* out, QString* errorMessage) {
     clip.insert(QStringLiteral("duration"), dur);
     const QString effect = clip.value(QStringLiteral("effect")).toString();
     clip.insert(QStringLiteral("effect"), VideoEffects::isKnownEffect(effect) ? effect : QString());
+    // Sanitize per-effect parameters: drop unknown keys, clamp values to the
+    // effect's declared ranges. When the effect is cleared, drop params too.
+    QVariantMap effectParams = clip.value(QStringLiteral("effectParams"), QVariantMap()).toMap();
+    if (clip.value(QStringLiteral("effect")).toString().isEmpty()) {
+      effectParams = QVariantMap();
+    } else {
+      const QVector<EffectParamSpec> specs =
+          VideoEffects::effectParamSpecs(clip.value(QStringLiteral("effect")).toString());
+      QVariantMap sanitized;
+      for (const EffectParamSpec& spec : specs) {
+        double v = ClipUtils::clipEffectParam(clip, spec.name, spec.def);
+        v = std::clamp(v, spec.min, spec.max);
+        sanitized.insert(spec.name, v);
+      }
+      effectParams = sanitized;
+    }
+    clip.insert(QStringLiteral("effectParams"), effectParams);
     const QString transition = clip.value(QStringLiteral("transition")).toString();
     if (!ClipUtils::isKnownTransition(transition)) {
       clip.insert(QStringLiteral("transition"), QString());

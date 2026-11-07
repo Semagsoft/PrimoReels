@@ -96,6 +96,22 @@ inline QString clipEffect(const QVariantMap& clip) {
   return clip.value(QStringLiteral("effect")).toString();
 }
 
+// Per-effect named parameters (e.g. blur radius, color-correction contrast).
+// Stored as a QVariantMap of paramName -> double on the clip.
+inline QVariantMap clipEffectParams(const QVariantMap& clip) {
+  return clip.value(QStringLiteral("effectParams"), QVariantMap()).toMap();
+}
+
+inline double clipEffectParam(const QVariantMap& clip, const QString& name, double def = 0.0) {
+  const QVariantMap params = clipEffectParams(clip);
+  const QVariant v = params.value(name);
+  if (!v.isValid()) {
+    return def;
+  }
+  const double d = v.toDouble();
+  return std::isfinite(d) != 0 ? d : def;
+}
+
 // Known transition types (single source of truth for engine + export +
 // project-file validation).
 inline bool isKnownTransition(const QString& type) {

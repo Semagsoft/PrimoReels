@@ -755,7 +755,8 @@ bool ExportThread::runExport(const QVariantList& clips,
             break;
           }
           const QImage frame =
-              drawTitle(VideoEffects::apply(held, effect).convertToFormat(QImage::Format_RGB32),
+              drawTitle(VideoEffects::apply(held, effect, ClipUtils::clipEffectParams(clip))
+                            .convertToFormat(QImage::Format_RGB32),
                         clip.value(QStringLiteral("title")).toString(), outW, outH);
           if (!encodeRgbFrame(frame)) {
             success = false;
@@ -814,12 +815,14 @@ bool ExportThread::runExport(const QVariantList& clips,
             if (heldA.isNull() || heldB.isNull()) {
               break;
             }
-            const QImage frameA =
-                drawTitle(toOutputSize(VideoEffects::apply(heldA, effect), outW, outH),
-                          clip.value(QStringLiteral("title")).toString(), outW, outH);
-            const QImage frameB =
-                drawTitle(toOutputSize(VideoEffects::apply(heldB, effectB), outW, outH),
-                          next.value(QStringLiteral("title")).toString(), outW, outH);
+            const QImage frameA = drawTitle(
+                toOutputSize(VideoEffects::apply(heldA, effect, ClipUtils::clipEffectParams(clip)),
+                             outW, outH),
+                clip.value(QStringLiteral("title")).toString(), outW, outH);
+            const QImage frameB = drawTitle(
+                toOutputSize(VideoEffects::apply(heldB, effectB, ClipUtils::clipEffectParams(next)),
+                             outW, outH),
+                next.value(QStringLiteral("title")).toString(), outW, outH);
             const double t = (blendCount <= 1) ? 1.0 : k / (blendCount - 1.0);
             QImage blended;
             if (transType == QLatin1String("Dip to Black")) {

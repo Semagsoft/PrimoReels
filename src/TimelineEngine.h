@@ -120,9 +120,23 @@ class TimelineEngine : public QObject {
   Q_INVOKABLE void previewTimelineClip(int index);
   Q_INVOKABLE void setClipEffect(int index, const QString& effectName);
   QString activeEffect() const;
-  // Single-lock snapshot of frame + effect for the render-thread provider,
-  // so an effect change cannot slip between two independent copies.
-  QImage currentFrameWithEffect(QString* effectOut) const;
+  // Single-lock snapshot of frame + effect + params for the render-thread
+  // provider, so an effect/param change cannot slip between two copies.
+  QImage currentFrameWithEffect(QString* effectOut, QVariantMap* paramsOut = nullptr) const;
+  // Named parameters of the currently previewed clip's effect (empty when
+  // no effect is active). Mirrors the active clip's "effectParams" map.
+  QVariantMap activeEffectParams() const;
+  // Parameter specifications for an effect: name/label/min/max/default/step
+  // entries the Inspector uses to build per-effect controls.
+  Q_INVOKABLE QVariantList effectParamSpecs(const QString& effectName) const;
+  // Parameters of a timeline clip's effect (index into m_timelineClips).
+  Q_INVOKABLE QVariantMap clipEffectParams(int index) const;
+  // Set a single named effect parameter on a timeline clip. pushHistory() is
+  // pushed so the change is undoable. Refreshes the preview if this clip is
+  // the current source.
+  Q_INVOKABLE void setClipEffectParam(int index, const QString& paramName, double value);
+  // Set the whole effect parameter map on a clip (used by import/undo).
+  void setClipEffectParams(int index, const QVariantMap& params);
   Q_INVOKABLE void setClipTrack(int index, int track);
   Q_INVOKABLE void setClipStartTime(int index, double startSeconds);
   Q_INVOKABLE void appendOverlayClip(const QString& filePath, double startSeconds);
@@ -359,6 +373,7 @@ class TimelineEngine : public QObject {
     double clipRotation = 0.0;
     QString currentSource;
     QString activeEffect;
+    QVariantMap activeEffectParams;
   };
   void pushHistory();
   void applySnapshot(const ListSnapshot& snapshot);
@@ -394,6 +409,8 @@ class TimelineEngine : public QObject {
   double m_seqEnd = 0.0;
   // Effect of the currently previewed timeline clip ("" = none).
   QString m_activeEffect;
+  // Named parameters of m_activeEffect (empty when no effect is active).
+  QVariantMap m_activeEffectParams;
   bool m_hasAudio = false;
   bool m_audioEof = false;
   bool m_currentIsAudioOnly = false;

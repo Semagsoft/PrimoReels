@@ -69,8 +69,9 @@ void VideoFrameItem::paint(QPainter* painter) {
     frame = m_engine->sourceFrame();
   } else {
     QString effect;
-    const QImage current = m_engine->currentFrameWithEffect(&effect);
-    frame = VideoEffects::apply(current, effect);
+    QVariantMap params;
+    const QImage current = m_engine->currentFrameWithEffect(&effect, &params);
+    frame = VideoEffects::apply(current, effect, params);
   }
 
   if (frame.isNull()) {
