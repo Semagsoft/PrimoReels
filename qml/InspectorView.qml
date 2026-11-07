@@ -84,7 +84,7 @@ Rectangle {
                         spacing: 15
 
                         Label {
-                            text: qsTr("Effect: %1").arg(selClip.effect)
+                            text: selClip ? qsTr("Effect: %1").arg(selClip.effect) : ""
                             color: "#cccccc"
                             font.pointSize: 9
                             font.bold: true
@@ -222,7 +222,7 @@ Rectangle {
                         RowLayout {
                             Label { text: qsTr("Name"); color: "#cccccc"; font.pointSize: 8; Layout.preferredWidth: 70 }
                             Label {
-                                text: selClip.name || ""
+                                text: selClip ? (selClip.name || "") : ""
                                 color: "#ffffff"
                                 font.pointSize: 8
                                 elide: Text.ElideRight
@@ -233,7 +233,7 @@ Rectangle {
                         RowLayout {
                             Label { text: qsTr("Path"); color: "#cccccc"; font.pointSize: 8; Layout.preferredWidth: 70 }
                             Label {
-                                text: selClip.path || ""
+                                text: selClip ? (selClip.path || "") : ""
                                 color: "#cccccc"
                                 font.pointSize: 7
                                 elide: Text.ElideMiddle
@@ -244,13 +244,13 @@ Rectangle {
                         RowLayout {
                             Label { text: qsTr("Track"); color: "#cccccc"; font.pointSize: 8; Layout.preferredWidth: 70 }
                             Label {
-                                text: (selClip.track || 0) === 0 ? qsTr("V1") : (selClip.track || 0) === 1 ? qsTr("V2") : qsTr("A1")
+                                text: selClip ? ((selClip.track || 0) === 0 ? qsTr("V1") : (selClip.track || 0) === 1 ? qsTr("V2") : qsTr("A1")) : ""
                                 color: "#ffffff"
                                 font.pointSize: 8
                                 Accessible.name: qsTr("Clip track")
                             }
                             Label {
-                                text: qsTr("Duration %1s").arg((selClip.duration || 0).toFixed(2))
+                                text: selClip ? qsTr("Duration %1s").arg((selClip.duration || 0).toFixed(2)) : ""
                                 color: "#cccccc"
                                 font.pointSize: 8
                                 Accessible.name: qsTr("Clip duration")
@@ -259,7 +259,7 @@ Rectangle {
                         RowLayout {
                             Label { text: qsTr("Trim in/out"); color: "#cccccc"; font.pointSize: 8; Layout.preferredWidth: 70 }
                             Label {
-                                text: qsTr("%1 / %2").arg((selClip.trimStart || 0).toFixed(2)).arg((selClip.trimEnd || 0).toFixed(2))
+                                text: selClip ? qsTr("%1 / %2").arg((selClip.trimStart || 0).toFixed(2)).arg((selClip.trimEnd || 0).toFixed(2)) : ""
                                 color: "#cccccc"
                                 font.pointSize: 8
                                 Accessible.name: qsTr("Clip trim in and out")
@@ -268,9 +268,9 @@ Rectangle {
                         RowLayout {
                             Label { text: qsTr("Start time"); color: "#cccccc"; font.pointSize: 8; Layout.preferredWidth: 70 }
                             Label {
-                                text: (selClip.track || 0) !== 0
+                                text: selClip ? ((selClip.track || 0) !== 0
                                     ? qsTr("%1s").arg((selClip.startTime || 0).toFixed(2))
-                                    : qsTr("—")
+                                    : qsTr("—")) : ""
                                 color: "#cccccc"
                                 font.pointSize: 8
                                 Accessible.name: qsTr("Clip start time")
@@ -279,9 +279,9 @@ Rectangle {
                         RowLayout {
                             Label { text: qsTr("Transition"); color: "#cccccc"; font.pointSize: 8; Layout.preferredWidth: 70 }
                             Label {
-                                text: (selClip.transition || "").length > 0
+                                text: selClip ? ((selClip.transition || "").length > 0
                                     ? qsTr("%1 (%2s)").arg(selClip.transition).arg((selClip.transitionDuration || 0.5).toFixed(2))
-                                    : qsTr("None")
+                                    : qsTr("None")) : ""
                                 color: "#cccccc"
                                 font.pointSize: 8
                                 Accessible.name: qsTr("Clip transition")
