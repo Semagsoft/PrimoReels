@@ -182,6 +182,10 @@ class TimelineEngine : public QObject {
   // Non-destructive copy of queued preview PCM (tests, future meters).
   // Covers whatever the program + bed mix last flushed into the FIFO.
   QByteArray peekPreviewAudio(qint64 maxBytes = 1048576) const;
+  // Peak level of the queued preview PCM, 0.0 (silence) to 1.0 (full scale).
+  // Non-destructive: reads the FIFO without consuming it. Safe to poll from
+  // QML for level meters.
+  Q_INVOKABLE double previewPeakLevel() const;
 
   // Source preview (independent decoder thread, silent).
   QString sourcePath() const { return m_sourcePath; }

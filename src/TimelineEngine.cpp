@@ -8,6 +8,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <algorithm>
+#include <cmath>
 #include "ClipUtils.h"
 #include "ProjectFile.h"
 #include "ProjectHistory.h"
@@ -301,6 +302,24 @@ void TimelineEngine::pause() {
 
 QByteArray TimelineEngine::peekPreviewAudio(qint64 maxBytes) const {
   return m_audioPlayer.peekBuffered(maxBytes);
+}
+
+double TimelineEngine::previewPeakLevel() const {
+  const QByteArray pcm = peekPreviewAudio(8192);
+  if (pcm.isEmpty()) {
+    return 0.0;
+  }
+  // S16 interleaved stereo PCM at 48 kHz. Peak over all samples in view.
+  const qint16* data = reinterpret_cast<const qint16*>(pcm.constData());
+  const int count = static_cast<int>(pcm.size()) / static_cast<int>(sizeof(qint16));
+  double peak = 0.0;
+  for (int i = 0; i < count; ++i) {
+    const double v = std::abs(static_cast<double>(data[i])) / 32768.0;
+    if (v > peak) {
+      peak = v;
+    }
+  }
+  return std::clamp(peak, 0.0, 1.0);
 }
 
 void TimelineEngine::setSequenceState(bool playing, int index) {

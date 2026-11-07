@@ -14,6 +14,9 @@ Rectangle {
     // Bound from Main.qml so duplicate bin paths resolve to the
     // selected clip instead of the first path match.
     property int selectedClipIndex: -1
+    // Smoothed preview audio peak level, 0.0 (silence) to 1.0 (full scale).
+    // Driven by a polling timer over timelineEngine.previewPeakLevel().
+    property real meterLevel: 0
     // Split from the Image source binding below: Image.visible must not
     // read Image.source (self-reference binding loop).
     property bool showVideo: timelineEngine.frameAvailable
@@ -41,6 +44,26 @@ Rectangle {
             }
         }
         return "";
+    }
+
+    // Audio level meter: polls the preview PCM peak ~30 fps. Instant rise,
+    // exponential decay so the bar doesn't flicker on every sample.
+    Timer {
+        id: levelMeterTimer
+        interval: 33
+        repeat: true
+        running: true
+        onTriggered: {
+            var raw = timelineEngine.previewPeakLevel();
+            if (raw > meterLevel) {
+                meterLevel = raw;
+            } else {
+                meterLevel *= 0.85;
+            }
+            if (meterLevel < 0.005) {
+                meterLevel = 0;
+            }
+        }
     }
 
     ColumnLayout {
@@ -168,6 +191,53 @@ Rectangle {
                       : qsTr("Preview")
                 color: timelineEngine.sequencePlaying ? "#ffaa00" : "#c7c7c7"
                 font.pointSize: 9
+            }
+        }
+
+        // Audio level meter (program output, post-gain/fade).
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 20
+            spacing: 6
+
+            Label {
+                text: qsTr("Level")
+                color: "#cccccc"
+                font.pointSize: 8
+                Layout.preferredWidth: 30
+                Accessible.name: qsTr("Program audio level")
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 14
+                color: "#2a2a2a"
+                border.color: "#3d3d3d"
+                border.width: 1
+                radius: 2
+
+                Rectangle {
+                    id: levelFill
+                    width: Math.max(2, parent.width * meterLevel)
+                    height: parent.height
+                    radius: 2
+                    color: meterLevel > 0.9 ? "#ff5555"
+                             : meterLevel > 0.7 ? "#e0b000"
+                             : "#4caf50"
+                }
+
+                Text {
+                    text: meterLevel <= 0.005 ? qsTr("-∞ dB")
+                          : qsTr("%1 dB").arg(Math.round(20 * Math.log(meterLevel) / Math.LN10))
+                    color: "#ffffff"
+                    font.pointSize: 8
+                    font.family: "Monospace"
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: parent.right
+                    anchors.rightMargin: 4
+                    Accessible.name: qsTr("Program audio level %1 dB")
+                                      .arg(Math.round(20 * Math.log(meterLevel) / Math.LN10))
+                }
             }
         }
 
