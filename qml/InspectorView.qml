@@ -210,6 +210,85 @@ Rectangle {
                         }
                     }
                 }
+                GroupBox {
+                    title: qsTr("Clip properties")
+                    Layout.fillWidth: true
+                    visible: selClip !== null
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 8
+
+                        RowLayout {
+                            Label { text: qsTr("Name"); color: "#cccccc"; font.pointSize: 8; Layout.preferredWidth: 70 }
+                            Label {
+                                text: selClip.name || ""
+                                color: "#ffffff"
+                                font.pointSize: 8
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                                Accessible.name: qsTr("Clip name")
+                            }
+                        }
+                        RowLayout {
+                            Label { text: qsTr("Path"); color: "#cccccc"; font.pointSize: 8; Layout.preferredWidth: 70 }
+                            Label {
+                                text: selClip.path || ""
+                                color: "#cccccc"
+                                font.pointSize: 7
+                                elide: Text.ElideMiddle
+                                Layout.fillWidth: true
+                                Accessible.name: qsTr("Clip path")
+                            }
+                        }
+                        RowLayout {
+                            Label { text: qsTr("Track"); color: "#cccccc"; font.pointSize: 8; Layout.preferredWidth: 70 }
+                            Label {
+                                text: (selClip.track || 0) === 0 ? qsTr("V1") : (selClip.track || 0) === 1 ? qsTr("V2") : qsTr("A1")
+                                color: "#ffffff"
+                                font.pointSize: 8
+                                Accessible.name: qsTr("Clip track")
+                            }
+                            Label {
+                                text: qsTr("Duration %1s").arg((selClip.duration || 0).toFixed(2))
+                                color: "#cccccc"
+                                font.pointSize: 8
+                                Accessible.name: qsTr("Clip duration")
+                            }
+                        }
+                        RowLayout {
+                            Label { text: qsTr("Trim in/out"); color: "#cccccc"; font.pointSize: 8; Layout.preferredWidth: 70 }
+                            Label {
+                                text: qsTr("%1 / %2").arg((selClip.trimStart || 0).toFixed(2)).arg((selClip.trimEnd || 0).toFixed(2))
+                                color: "#cccccc"
+                                font.pointSize: 8
+                                Accessible.name: qsTr("Clip trim in and out")
+                            }
+                        }
+                        RowLayout {
+                            Label { text: qsTr("Start time"); color: "#cccccc"; font.pointSize: 8; Layout.preferredWidth: 70 }
+                            Label {
+                                text: (selClip.track || 0) !== 0
+                                    ? qsTr("%1s").arg((selClip.startTime || 0).toFixed(2))
+                                    : qsTr("—")
+                                color: "#cccccc"
+                                font.pointSize: 8
+                                Accessible.name: qsTr("Clip start time")
+                            }
+                        }
+                        RowLayout {
+                            Label { text: qsTr("Transition"); color: "#cccccc"; font.pointSize: 8; Layout.preferredWidth: 70 }
+                            Label {
+                                text: (selClip.transition || "").length > 0
+                                    ? qsTr("%1 (%2s)").arg(selClip.transition).arg((selClip.transitionDuration || 0.5).toFixed(2))
+                                    : qsTr("None")
+                                color: "#cccccc"
+                                font.pointSize: 8
+                                Accessible.name: qsTr("Clip transition")
+                            }
+                        }
+                    }
+                }
             }
         }
     }
