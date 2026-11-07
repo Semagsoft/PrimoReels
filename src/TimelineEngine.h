@@ -42,6 +42,7 @@ class TimelineEngine : public QObject {
   Q_PROPERTY(QObject* mediaModel READ mediaModel CONSTANT)
   Q_PROPERTY(QObject* timelineModel READ timelineModel CONSTANT)
   Q_PROPERTY(QObject* mediaFilterModel READ mediaFilterModel CONSTANT)
+  Q_PROPERTY(QVariantList timelineMarkers READ timelineMarkers NOTIFY timelineMarkersChanged)
   Q_PROPERTY(bool isExporting READ isExporting NOTIFY isExportingChanged)
   Q_PROPERTY(double exportProgress READ exportProgress NOTIFY exportProgressChanged)
   Q_PROPERTY(bool canUndo READ canUndo NOTIFY historyChanged)
@@ -239,6 +240,7 @@ class TimelineEngine : public QObject {
   // transiently by the UI, unlike failed() which sticks until cleared.
   void warning(const QString& message);
   void playbackRateChanged();
+  void timelineMarkersChanged();
   void sourcePathChanged();
   void sourceDurationChanged();
   void sourcePositionChanged();
@@ -290,6 +292,14 @@ class TimelineEngine : public QObject {
   void onSourceFailed(const QString& message);
   void onSourceClosed();
   void onSourceTick();
+
+  // Timeline markers (bookmarks): named positions on the output timeline.
+  Q_INVOKABLE QVariantList timelineMarkers() const { return m_timelineMarkers; }
+  Q_INVOKABLE void addTimelineMarker(const QString& name,
+                                     double time,
+                                     const QString& color = QStringLiteral("#ffaa00"));
+  Q_INVOKABLE void removeTimelineMarker(int index);
+  Q_INVOKABLE void seekToMarker(int index);
 
  private:
   void requestSeek(double seconds, bool force = false);
@@ -358,6 +368,8 @@ class TimelineEngine : public QObject {
   double m_playbackRate = 1.0;
   QVariantList m_mediaList;
   QVariantList m_timelineClips;
+  // Timeline markers: {name, time, color} entries on the output timeline.
+  QVariantList m_timelineMarkers;
   MediaListModel m_mediaModel;
   TimelineClipModel m_timelineModel;
   MediaFilterModel m_mediaFilterModel;

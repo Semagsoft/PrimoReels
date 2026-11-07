@@ -761,6 +761,40 @@ void TimelineEngine::seek(double seconds) {
   requestSeek(clamped);
 }
 
+void TimelineEngine::addTimelineMarker(const QString& name, double time, const QString& color) {
+  if (!ClipUtils::isFiniteDouble(time) || time < 0.0) {
+    return;
+  }
+  const double clamped = std::clamp(time, 0.0, m_duration);
+  QVariantMap marker;
+  marker.insert(
+      QStringLiteral("name"),
+      name.isEmpty() ? QStringLiteral("Marker %1").arg(m_timelineMarkers.size() + 1) : name);
+  marker.insert(QStringLiteral("time"), clamped);
+  marker.insert(QStringLiteral("color"), color.isEmpty() ? QStringLiteral("#ffaa00") : color);
+  pushHistory();
+  m_timelineMarkers.append(marker);
+  emit timelineMarkersChanged();
+}
+
+void TimelineEngine::removeTimelineMarker(int index) {
+  if (index < 0 || index >= m_timelineMarkers.size()) {
+    return;
+  }
+  pushHistory();
+  m_timelineMarkers.removeAt(index);
+  emit timelineMarkersChanged();
+}
+
+void TimelineEngine::seekToMarker(int index) {
+  if (index < 0 || index >= m_timelineMarkers.size()) {
+    return;
+  }
+  const double time =
+      m_timelineMarkers.at(index).toMap().value(QStringLiteral("time"), 0.0).toDouble();
+  seek(time);
+}
+
 void TimelineEngine::onTick() {
   if (!m_isPlaying) {
     return;

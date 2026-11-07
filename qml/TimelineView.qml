@@ -390,6 +390,20 @@ Rectangle {
                 onToggled: snappingEnabled = checked
             }
             Button {
+                text: qsTr("Add Marker")
+                font.pointSize: 9
+                focusPolicy: Qt.NoFocus
+                enabled: timelineEngine.duration > 0
+                Accessible.name: qsTr("Add timeline marker at playhead")
+                ToolTip.text: qsTr("Add timeline marker at playhead")
+                ToolTip.visible: hovered
+                onClicked: {
+                    timelineEngine.addTimelineMarker(
+                        qsTr("Marker %1").arg(timelineEngine.timelineMarkers.length + 1),
+                        timelineEngine.position);
+                }
+            }
+            Button {
                 text: qsTr("Zoom -")
                 font.pointSize: 9
                 focusPolicy: Qt.NoFocus
@@ -612,6 +626,26 @@ Rectangle {
                                     font.pointSize: 9
                                     elide: Text.ElideRight
                                 }
+                            }
+                        }
+                    }
+
+                    // Timeline markers: clickable tick marks on the ruler.
+                    Repeater {
+                        model: timelineEngine.timelineMarkers
+                        delegate: Item {
+                            x: trackOrigin + modelData.time * pixelsPerSecond
+                            width: 4
+                            height: 25
+                            Rectangle {
+                                width: 2
+                                height: 25
+                                color: modelData.color
+                                anchors.centerIn: parent
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: timelineEngine.seekToMarker(index)
                             }
                         }
                     }

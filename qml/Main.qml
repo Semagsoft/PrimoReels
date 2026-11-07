@@ -321,6 +321,19 @@ ApplicationWindow {
         onActivated: timelinePanel.splitSelectedAtPlayhead()
     }
 
+    // Global Add Marker shortcut: guarded against text input, needs a
+    // non-empty timeline (duration > 0 means something is loaded).
+    Shortcut {
+        sequence: "M"
+        context: Qt.WindowShortcut
+        enabled: timelineEngine.duration > 0 && !root.isTextInputFocused()
+        onActivated: {
+            timelineEngine.addTimelineMarker(
+                qsTr("Marker %1").arg(timelineEngine.timelineMarkers.length + 1),
+                timelineEngine.position);
+        }
+    }
+
     menuBar: MenuBar {
         Menu {
             title: qsTr("&File")
