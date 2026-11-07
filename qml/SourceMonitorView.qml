@@ -46,10 +46,15 @@ Rectangle {
     property bool showLiveFrame: isLoaded && timelineEngine.sourceFrameAvailable
     property bool showThumb: !showLiveFrame && sourcePath.length > 0
                              && timelineEngine.hasThumb(sourcePath)
+    // Waveform tick: tracks the engine's waveVersion so the Canvas
+    // repaints when source waveform data arrives.
+    property int waveTick: timelineEngine.waveVersion
+    onWaveTickChanged: sourceWaveCanvas.requestPaint()
 
     onSourcePathChanged: {
         if (sourcePath.length > 0) {
             timelineEngine.requestThumb(sourcePath);
+            timelineEngine.requestWaveform(sourcePath);
             // Auto-loads (and auto-plays on ready) on the source thread;
             // the program monitor is untouched.
             timelineEngine.loadSource(sourcePath);
@@ -181,6 +186,33 @@ Rectangle {
             enabled: sourceMonitorRoot.isLoaded
             Accessible.name: qsTr("Source scrub")
             onMoved: timelineEngine.seekSource(value)
+        }
+
+        // Source audio waveform (visual only: source playback is silent by
+        // design). Repaints when waveform data arrives (waveTick) or the
+        // canvas is resized.
+        Canvas {
+            id: sourceWaveCanvas
+            Layout.fillWidth: true
+            Layout.preferredHeight: 40
+            visible: sourcePath.length > 0
+                     && timelineEngine.hasWaveform(sourcePath)
+            onPaint: {
+                var ctx = getContext("2d");
+                ctx.clearRect(0, 0, width, height);
+                var peaks = timelineEngine.waveform(sourcePath);
+                if (!peaks || peaks.length === 0) {
+                    return;
+                }
+                ctx.fillStyle = "#bfe8c9";
+                var n = peaks.length;
+                var barW = Math.max(1, width / n);
+                for (var i = 0; i < n; ++i) {
+                    var h = Math.max(1, peaks[i] * height);
+                    var y = (height - h) / 2;
+                    ctx.fillRect(i * barW, y, Math.max(1, barW - 0.5), h);
+                }
+            }
         }
     }
 }
