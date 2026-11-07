@@ -792,7 +792,7 @@ ApplicationWindow {
             };
         }
 
-        onAccepted: fileDialog.open()
+        onAccepted: exportFileDialog.open()
 
         ColumnLayout {
             spacing: 10
@@ -917,8 +917,8 @@ ApplicationWindow {
         }
 
         FileDialog {
-            id: fileDialog
-            objectName: "fileDialog"
+            id: exportFileDialog
+            objectName: "exportFileDialog"
             title: qsTr("Choose Export Destination")
             fileMode: FileDialog.SaveFile
             defaultSuffix: "mp4"
