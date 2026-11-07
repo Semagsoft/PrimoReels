@@ -5,7 +5,13 @@
 #include "TimelineEngine.h"
 #include "VideoFrameItem.h"
 
+// Disable the Linux AT-SPI accessibility plugin so it does not log a
+// harmless "GetApplicationBusAddress" warning when no assistive
+// technology is running. Qt accessibility (Accessible.name/role/etc.)
+// remains compiled in; this only prevents the plugin from trying to
+// register on the system bus.
 int main(int argc, char* argv[]) {
+  qputenv("QT_LINUX_ACCESSIBILITY_ALWAYS_OFF", "1");
   QGuiApplication app(argc, argv);
   QCoreApplication::setOrganizationName(QStringLiteral("PrimoReels"));
   QCoreApplication::setApplicationName(QStringLiteral("PrimoReels"));
