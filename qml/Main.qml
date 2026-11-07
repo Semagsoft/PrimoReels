@@ -780,13 +780,16 @@ ApplicationWindow {
         modal: true
         standardButtons: Dialog.Ok | Dialog.Cancel
 
-        property var exportSettings: {
-            container: "mp4",
-            videoCodec: "libx264",
-            audioCodec: "aac",
-            fps: 30,
-            videoBitRate: 0,
-            audioBitRate: 128000
+        property var exportSettings
+        Component.onCompleted: {
+            exportSettings = {
+                container: "mp4",
+                videoCodec: "libx264",
+                audioCodec: "aac",
+                fps: 30,
+                videoBitRate: 0,
+                audioBitRate: 128000
+            };
         }
 
         onAccepted: fileDialog.open()
