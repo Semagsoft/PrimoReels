@@ -922,6 +922,29 @@ ApplicationWindow {
                 spacing: 10
 
                 Label {
+                    text: qsTr("Rate control mode")
+                    color: "#cccccc"
+                    font.pointSize: 9
+                    Layout.preferredWidth: 100
+                    Accessible.name: qsTr("Export rate control mode")
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    model: [qsTr("Quality (CRF)"), qsTr("Bitrate (CBR)")]
+                    currentIndex: 0
+                    Accessible.name: qsTr("Export rate control mode")
+                    onActivated: {
+                        exportDialog.exportSettings.rateControlMode =
+                            index === 0 ? "crf" : "cbr";
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Label {
                     text: qsTr("Video bitrate (kbps, 0 = default)")
                     color: "#cccccc"
                     font.pointSize: 9

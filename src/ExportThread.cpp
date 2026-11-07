@@ -389,6 +389,15 @@ bool ExportThread::runExport(const QVariantList& clips,
       videoBitRate = v.toLongLong();
     }
   }
+  // Rate control mode: "crf" = quality-targeted (CRF, libx264/libx265 only),
+  // "cbr" = bitrate-targeted (all codecs). Defaults to "crf".
+  QString rateControlMode = QStringLiteral("crf");
+  {
+    const QVariant v = settings.value(QStringLiteral("rateControlMode"));
+    if (v.isValid() && !v.toString().isEmpty()) {
+      rateControlMode = v.toString();
+    }
+  }
   int64_t audioBitRate = kAudioBitRate;
   {
     const QVariant v = settings.value(QStringLiteral("audioBitRate"));
@@ -535,13 +544,17 @@ bool ExportThread::runExport(const QVariantList& clips,
   if (oc->oformat->flags & AVFMT_GLOBALHEADER) {
     videoEnc->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
   }
-  if (videoCodecName == QLatin1String("libx264") || videoCodecName == QLatin1String("libx265")) {
+  if (rateControlMode == QLatin1String("cbr")) {
+    // Bitrate-targeted: use the requested bitrate for all codecs.
+    videoEnc->bit_rate = videoBitRate > 0 ? videoBitRate : 5000000;
+  } else if (videoCodecName == QLatin1String("libx264") ||
+             videoCodecName == QLatin1String("libx265")) {
+    // Quality-targeted: CRF for x264/x265. Other codecs fall through to
+    // bitrate mode below.
     av_opt_set(videoEnc->priv_data, "preset", "veryfast", 0);
     av_opt_set(videoEnc->priv_data, "crf", "23", 0);
-  } else if (videoBitRate > 0) {
-    videoEnc->bit_rate = videoBitRate;
   } else {
-    videoEnc->bit_rate = 5000000;
+    videoEnc->bit_rate = videoBitRate > 0 ? videoBitRate : 5000000;
   }
   bool streamsOk = avcodec_open2(videoEnc, videoCodec, nullptr) >= 0 &&
                    avcodec_parameters_from_context(videoStream->codecpar, videoEnc) >= 0;
