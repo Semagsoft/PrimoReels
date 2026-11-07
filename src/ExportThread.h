@@ -17,7 +17,10 @@ class ExportThread : public QThread {
   ExportThread();
   ~ExportThread() override;
 
-  void requestExport(const QVariantList& clips, const QString& outputPath, double volume = 1.0);
+  void requestExport(const QVariantList& clips,
+                     const QString& outputPath,
+                     double volume = 1.0,
+                     const QVariantMap& settings = {});
   void requestCancel();
   bool isExporting() const;
 
@@ -36,7 +39,8 @@ class ExportThread : public QThread {
                  const QString& outputPath,
                  QString* error,
                  QString* warning = nullptr,
-                 double volume = 1.0);
+                 double volume = 1.0,
+                 const QVariantMap& settings = {});
   bool isCancelRequested() const;
 
   mutable QMutex m_mutex;
@@ -48,4 +52,5 @@ class ExportThread : public QThread {
   QVariantList m_pendingClips;
   QString m_pendingOutput;
   double m_pendingVolume = 1.0;
+  QVariantMap m_pendingSettings;
 };

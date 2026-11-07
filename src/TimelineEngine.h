@@ -161,7 +161,7 @@ class TimelineEngine : public QObject {
   Q_INVOKABLE void newProject();
   bool isExporting() const { return m_isExporting; }
   double exportProgress() const { return m_exportProgress; }
-  Q_INVOKABLE void exportSequence(const QString& filePath);
+  Q_INVOKABLE void exportSequence(const QString& filePath, const QVariantMap& settings = {});
   Q_INVOKABLE void cancelExport();
   bool canUndo() const { return m_history.canUndo(); }
   bool canRedo() const { return m_history.canRedo(); }

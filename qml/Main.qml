@@ -757,14 +757,164 @@ ApplicationWindow {
         onAccepted: root.requestOpen(selectedFile.toString())
     }
 
-    FileDialog {
+    // Export preset dialog: choose container/codec/fps/bitrate, then pick a
+    // destination file. The FileDialog is nested so the settings are in scope
+    // when exportSequence is called.
+    Dialog {
         id: exportDialog
         objectName: "exportDialog"
         title: qsTr("Export Sequence")
-        fileMode: FileDialog.SaveFile
-        defaultSuffix: "mp4"
-        nameFilters: [qsTr("MP4 video (*.mp4)"), qsTr("All files (*)")]
-        onAccepted: timelineEngine.exportSequence(selectedFile.toString())
+        modal: true
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        property var exportSettings: {
+            container: "mp4",
+            videoCodec: "libx264",
+            audioCodec: "aac",
+            fps: 30,
+            videoBitRate: 0,
+            audioBitRate: 128000
+        }
+
+        onAccepted: fileDialog.open()
+
+        ColumnLayout {
+            spacing: 10
+            Layout.fillWidth: true
+
+            Label {
+                text: qsTr("Export preset")
+                color: "#cccccc"
+                font.pointSize: 9
+                Layout.fillWidth: true
+            }
+
+            ComboBox {
+                Layout.fillWidth: true
+                model: [
+                    qsTr("H.264 MP4 (default)"),
+                    qsTr("MPEG-4 MP4"),
+                    qsTr("H.264 MP4 (high bitrate)"),
+                    qsTr("MPEG-4 MP4 (low bitrate)")
+                ]
+                currentIndex: 0
+                Accessible.name: qsTr("Export preset")
+                onActivated: {
+                    switch (index) {
+                        case 0:
+                            exportDialog.exportSettings = {
+                                container: "mp4", videoCodec: "libx264",
+                                audioCodec: "aac", fps: 30,
+                                videoBitRate: 0, audioBitRate: 128000
+                            };
+                            break;
+                        case 1:
+                            exportDialog.exportSettings = {
+                                container: "mp4", videoCodec: "mpeg4",
+                                audioCodec: "aac", fps: 30,
+                                videoBitRate: 0, audioBitRate: 128000
+                            };
+                            break;
+                        case 2:
+                            exportDialog.exportSettings = {
+                                container: "mp4", videoCodec: "libx264",
+                                audioCodec: "aac", fps: 30,
+                                videoBitRate: 10000000, audioBitRate: 192000
+                            };
+                            break;
+                        case 3:
+                            exportDialog.exportSettings = {
+                                container: "mp4", videoCodec: "mpeg4",
+                                audioCodec: "aac", fps: 30,
+                                videoBitRate: 1000000, audioBitRate: 64000
+                            };
+                            break;
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Label {
+                    text: qsTr("Frame rate (fps)")
+                    color: "#cccccc"
+                    font.pointSize: 9
+                    Layout.preferredWidth: 100
+                    Accessible.name: qsTr("Export frame rate")
+                }
+                SpinBox {
+                    Layout.fillWidth: true
+                    from: 1
+                    to: 120
+                    value: exportDialog.exportSettings.fps
+                    Accessible.name: qsTr("Export frame rate")
+                    onValueModified: exportDialog.exportSettings.fps = value
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Label {
+                    text: qsTr("Video bitrate (kbps, 0 = default)")
+                    color: "#cccccc"
+                    font.pointSize: 9
+                    Layout.preferredWidth: 100
+                    Accessible.name: qsTr("Export video bitrate")
+                }
+                SpinBox {
+                    Layout.fillWidth: true
+                    from: 0
+                    to: 50000
+                    value: exportDialog.exportSettings.videoBitRate / 1000
+                    Accessible.name: qsTr("Export video bitrate")
+                    onValueModified:
+                        exportDialog.exportSettings.videoBitRate = value * 1000
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Label {
+                    text: qsTr("Audio codec")
+                    color: "#cccccc"
+                    font.pointSize: 9
+                    Layout.preferredWidth: 100
+                    Accessible.name: qsTr("Export audio codec")
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    model: [qsTr("AAC"), qsTr("MP3"), qsTr("None")]
+                    currentIndex: 0
+                    Accessible.name: qsTr("Export audio codec")
+                    onActivated: {
+                        exportDialog.exportSettings.audioCodec =
+                            index === 0 ? "aac" : index === 1 ? "mp3" : "";
+                    }
+                }
+            }
+        }
+
+        FileDialog {
+            id: fileDialog
+            objectName: "fileDialog"
+            title: qsTr("Choose Export Destination")
+            fileMode: FileDialog.SaveFile
+            defaultSuffix: "mp4"
+            nameFilters: [qsTr("MP4 video (*.mp4)"), qsTr("All files (*)")]
+            onAccepted: {
+                var settings = {};
+                for (var key in exportDialog.exportSettings) {
+                    settings[key] = exportDialog.exportSettings[key];
+                }
+                timelineEngine.exportSequence(selectedFile.toString(), settings);
+            }
+        }
     }
 
     Dialog {

@@ -31,7 +31,6 @@ extern "C" {
 
 namespace {
 
-constexpr int kFps = 30;
 constexpr int kAudioRate = 48000;
 constexpr int kAudioChannels = 2;
 constexpr int64_t kAudioBitRate = 128000;
@@ -227,11 +226,13 @@ ExportThread::~ExportThread() {
 
 void ExportThread::requestExport(const QVariantList& clips,
                                  const QString& outputPath,
-                                 double volume) {
+                                 double volume,
+                                 const QVariantMap& settings) {
   QMutexLocker locker(&m_mutex);
   m_pendingClips = clips;
   m_pendingOutput = outputPath;
   m_pendingVolume = std::clamp(volume, 0.0, 2.0);
+  m_pendingSettings = settings;
   m_hasRequest = true;
   m_condition.wakeOne();
 }
@@ -260,6 +261,7 @@ void ExportThread::run() {
     QVariantList clips;
     QString output;
     double volume = 1.0;
+    QVariantMap settings;
     {
       QMutexLocker locker(&m_mutex);
       while (!m_hasRequest && !m_abort) {
@@ -271,13 +273,14 @@ void ExportThread::run() {
       clips = m_pendingClips;
       output = m_pendingOutput;
       volume = m_pendingVolume;
+      settings = m_pendingSettings;
       m_hasRequest = false;
       m_exporting = true;
     }
 
     QString error;
     QString warning;
-    const bool ok = runExport(clips, output, &error, &warning, volume);
+    const bool ok = runExport(clips, output, &error, &warning, volume, settings);
 
     {
       QMutexLocker locker(&m_mutex);
@@ -311,7 +314,8 @@ bool ExportThread::runExport(const QVariantList& clips,
                              const QString& outputPath,
                              QString* error,
                              QString* warning,
-                             double volume) {
+                             double volume,
+                             const QVariantMap& settings) {
   const double globalVolume = std::clamp(volume, 0.0, 2.0);
   auto fail = [&](const QString& msg) {
     if (error && error->isEmpty()) {
@@ -319,6 +323,53 @@ bool ExportThread::runExport(const QVariantList& clips,
     }
     return false;
   };
+  // Export settings (from the QML preset dialog), with sensible defaults.
+  double fpsD = 30.0;
+  {
+    const QVariant v = settings.value(QStringLiteral("fps"));
+    if (v.isValid()) {
+      fpsD = v.toDouble();
+    }
+  }
+  const int fps = qRound(fpsD);
+  QString videoCodecName = QStringLiteral("libx264");
+  {
+    const QVariant v = settings.value(QStringLiteral("videoCodec"));
+    if (v.isValid()) {
+      videoCodecName = v.toString();
+    }
+  }
+  const bool wantX264 = videoCodecName == QLatin1String("libx264");
+  QString audioCodecName = QStringLiteral("aac");
+  {
+    const QVariant v = settings.value(QStringLiteral("audioCodec"));
+    if (v.isValid()) {
+      audioCodecName = v.toString();
+    }
+  }
+  const bool wantAudio = !audioCodecName.isEmpty();
+  int64_t videoBitRate = 0;
+  {
+    const QVariant v = settings.value(QStringLiteral("videoBitRate"));
+    if (v.isValid()) {
+      videoBitRate = v.toLongLong();
+    }
+  }
+  int64_t audioBitRate = kAudioBitRate;
+  {
+    const QVariant v = settings.value(QStringLiteral("audioBitRate"));
+    if (v.isValid()) {
+      audioBitRate = v.toLongLong();
+    }
+  }
+  QString container = QStringLiteral("mp4");
+  {
+    const QVariant v = settings.value(QStringLiteral("container"));
+    if (v.isValid()) {
+      container = v.toString();
+    }
+  }
+
   const QString outPath = ClipUtils::normalizedMediaPath(outputPath);
   if (clips.isEmpty() || outPath.isEmpty()) {
     return fail(QStringLiteral("Export failed: nothing to export."));
@@ -407,7 +458,7 @@ bool ExportThread::runExport(const QVariantList& clips,
   }
   std::vector<double> blendOut(clips.size(), 0.0);
   for (size_t k = 0; k + 1 < v1.size(); ++k) {
-    blendOut[v1[k]] = transitionOverlap(clips.at(v1[k]).toMap(), clips.at(v1[k + 1]).toMap(), kFps);
+    blendOut[v1[k]] = transitionOverlap(clips.at(v1[k]).toMap(), clips.at(v1[k + 1]).toMap(), fps);
   }
   double totalSeconds = 0.0;
   for (int i : v1) {
@@ -425,19 +476,24 @@ bool ExportThread::runExport(const QVariantList& clips,
   }
 
   AVFormatContext* oc = nullptr;
-  if (avformat_alloc_output_context2(&oc, nullptr, "mp4", nullptr) < 0 || !oc) {
-    return fail(QStringLiteral("Export failed: could not allocate MP4 muxer."));
+  if (avformat_alloc_output_context2(&oc, nullptr, container.toLatin1().constData(), nullptr) < 0 ||
+      !oc) {
+    return fail(QStringLiteral("Export failed: could not allocate %1 muxer.").arg(container));
   }
 
   // --- Video stream ---
-  const AVCodec* videoCodec = avcodec_find_encoder_by_name("libx264");
-  const bool useX264 = videoCodec != nullptr;
+  const AVCodec* videoCodec = wantX264 ? avcodec_find_encoder_by_name("libx264") : nullptr;
   if (!videoCodec) {
+    videoCodec = avcodec_find_encoder(AV_CODEC_ID_MPEG4);
+  }
+  if (!videoCodec && wantX264) {
+    // libx264 requested but missing: fall back to MPEG4 so the export
+    // still succeeds instead of failing hard.
     videoCodec = avcodec_find_encoder(AV_CODEC_ID_MPEG4);
   }
   if (!videoCodec) {
     avformat_free_context(oc);
-    return fail(QStringLiteral("Export failed: no H.264/MPEG-4 video encoder found."));
+    return fail(QStringLiteral("Export failed: no video encoder found."));
   }
   AVStream* videoStream = avformat_new_stream(oc, nullptr);
   AVCodecContext* videoEnc = avcodec_alloc_context3(videoCodec);
@@ -448,16 +504,18 @@ bool ExportThread::runExport(const QVariantList& clips,
   }
   videoEnc->width = outW;
   videoEnc->height = outH;
-  videoEnc->time_base = AVRational{1, kFps};
-  videoEnc->framerate = AVRational{kFps, 1};
+  videoEnc->time_base = AVRational{1, fps};
+  videoEnc->framerate = AVRational{fps, 1};
   videoEnc->pix_fmt = AV_PIX_FMT_YUV420P;
-  videoEnc->gop_size = 2 * kFps;
+  videoEnc->gop_size = 2 * fps;
   if (oc->oformat->flags & AVFMT_GLOBALHEADER) {
     videoEnc->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
   }
-  if (useX264) {
+  if (wantX264) {
     av_opt_set(videoEnc->priv_data, "preset", "veryfast", 0);
     av_opt_set(videoEnc->priv_data, "crf", "23", 0);
+  } else if (videoBitRate > 0) {
+    videoEnc->bit_rate = videoBitRate;
   } else {
     videoEnc->bit_rate = 5000000;
   }
@@ -469,8 +527,12 @@ bool ExportThread::runExport(const QVariantList& clips,
   // stream only on success so a failed encoder leaves no empty stream.
   AVStream* audioStream = nullptr;
   AVCodecContext* audioEnc = nullptr;
-  if (anyAudio && streamsOk) {
-    const AVCodec* audioCodec = avcodec_find_encoder(AV_CODEC_ID_AAC);
+  if (wantAudio && anyAudio && streamsOk) {
+    AVCodecID audioCodecId = AV_CODEC_ID_AAC;
+    if (audioCodecName == QLatin1String("mp3")) {
+      audioCodecId = AV_CODEC_ID_MP3;
+    }
+    const AVCodec* audioCodec = avcodec_find_encoder(audioCodecId);
     AVCodecContext* enc = audioCodec ? avcodec_alloc_context3(audioCodec) : nullptr;
     bool audioOk = false;
     if (enc) {
@@ -478,7 +540,7 @@ bool ExportThread::runExport(const QVariantList& clips,
       av_channel_layout_default(&enc->ch_layout, kAudioChannels);
       enc->sample_fmt = AV_SAMPLE_FMT_FLTP;  // native AAC sample format
       enc->time_base = AVRational{1, kAudioRate};
-      enc->bit_rate = kAudioBitRate;
+      enc->bit_rate = audioBitRate > 0 ? audioBitRate : kAudioBitRate;
       if (oc->oformat->flags & AVFMT_GLOBALHEADER) {
         enc->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
       }
@@ -686,7 +748,7 @@ bool ExportThread::runExport(const QVariantList& clips,
   };
 
   auto encodeRgbFrame = [&](const QImage& rgb) -> bool {
-    const double outSeconds = videoFrameIndex / static_cast<double>(kFps);
+    const double outSeconds = videoFrameIndex / static_cast<double>(fps);
     const QImage composited = overlayV2(rgb.convertToFormat(QImage::Format_RGB32), outSeconds);
     if (av_frame_make_writable(yuv.get()) < 0) {
       return false;
@@ -705,7 +767,7 @@ bool ExportThread::runExport(const QVariantList& clips,
     }
     ++videoFrameIndex;
     if (++progressCounter % 15 == 0) {
-      emit progressChanged(exportedSeconds + (videoFrameIndex * 1.0 / kFps - exportedBase),
+      emit progressChanged(exportedSeconds + (videoFrameIndex * 1.0 / fps - exportedBase),
                            totalSeconds);
     }
     return true;
@@ -740,7 +802,7 @@ bool ExportThread::runExport(const QVariantList& clips,
       blackFrame.fill(Qt::black);
 
       // --- Video solo part: sample-and-hold resampling (black for audio-only) ---
-      const int64_t outFrames = static_cast<int64_t>(std::ceil(soloLen * kFps));
+      const int64_t outFrames = static_cast<int64_t>(std::ceil(soloLen * fps));
       int64_t clipFrames = 0;
       if (dec.hasVideo()) {
         dec.seekVideoTo(soloStart);
@@ -749,7 +811,7 @@ bool ExportThread::runExport(const QVariantList& clips,
           if (isCancelRequested()) {
             break;
           }
-          const double target = soloStart + n / static_cast<double>(kFps);
+          const double target = soloStart + n / static_cast<double>(fps);
           const QImage held = pump.sampleAt(target);
           if (held.isNull()) {
             break;
@@ -801,15 +863,15 @@ bool ExportThread::runExport(const QVariantList& clips,
           if (hasB) {
             decB.seekVideoTo(trimB);
           }
-          const int blendCount = std::max(1, static_cast<int>(std::round(outT * kFps)));
+          const int blendCount = std::max(1, static_cast<int>(std::round(outT * fps)));
           SampleHoldPump pumpA(&dec, blendAStart);
           SampleHoldPump pumpB(&decB, trimB);
           for (int k = 0; k < blendCount; ++k) {
             if (isCancelRequested()) {
               break;
             }
-            const double tA = blendAStart + k / static_cast<double>(kFps);
-            const double tB = trimB + k / static_cast<double>(kFps);
+            const double tA = blendAStart + k / static_cast<double>(fps);
+            const double tB = trimB + k / static_cast<double>(fps);
             QImage heldA = hasA ? pumpA.sampleAt(tA) : blackFrame;
             QImage heldB = hasB ? pumpB.sampleAt(tB) : blackFrame;
             if (heldA.isNull() || heldB.isNull()) {
@@ -845,7 +907,7 @@ bool ExportThread::runExport(const QVariantList& clips,
       if (!success) {
         break;
       }
-      exportedSeconds += (clipFrames + blendFrames) / static_cast<double>(kFps);
+      exportedSeconds += (clipFrames + blendFrames) / static_cast<double>(fps);
       emit progressChanged(exportedSeconds, totalSeconds);
 
       // --- Audio: streaming PCM from solo + blend range (hard cut), silence-padded ---

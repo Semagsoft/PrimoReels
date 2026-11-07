@@ -559,7 +559,7 @@ void TimelineEngine::onWaveformReady(const QString& path, const QVariantList& pe
   emit waveformsChanged();
 }
 
-void TimelineEngine::exportSequence(const QString& filePath) {
+void TimelineEngine::exportSequence(const QString& filePath, const QVariantMap& settings) {
   if (m_isExporting) {
     return;
   }
@@ -571,7 +571,7 @@ void TimelineEngine::exportSequence(const QString& filePath) {
   m_exportProgress = 0.0;
   emit isExportingChanged();
   emit exportProgressChanged();
-  m_exportThread.requestExport(m_timelineClips, filePath, m_volume);
+  m_exportThread.requestExport(m_timelineClips, filePath, m_volume, settings);
 }
 
 void TimelineEngine::cancelExport() {
