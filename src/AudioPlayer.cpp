@@ -178,3 +178,32 @@ qint64 AudioPlayer::bufferedMsecs() const {
 QByteArray AudioPlayer::peekBuffered(qint64 maxBytes) const {
   return m_device ? m_device->peek(maxBytes) : QByteArray();
 }
+
+QByteArray AudioPlayer::resampleRate(const QByteArray& samples, double rate) {
+  if (samples.isEmpty() || qFuzzyCompare(rate, 1.0)) {
+    return samples;
+  }
+  constexpr int kChannelCount = 2;
+  const qsizetype sampleCount =
+      static_cast<qsizetype>(samples.size()) / static_cast<qsizetype>(sizeof(qint16));
+  const auto* data = reinterpret_cast<const qint16*>(samples.constData());
+  const qsizetype outCount =
+      static_cast<qsizetype>(std::lround(static_cast<double>(sampleCount) / rate));
+  QByteArray out(static_cast<qsizetype>(outCount * kChannelCount * sizeof(qint16)), 0);
+  auto* outData = reinterpret_cast<qint16*>(out.data());
+  for (qsizetype ch = 0; ch < kChannelCount; ++ch) {
+    for (qsizetype j = 0; j < outCount; ++j) {
+      const double srcPos = static_cast<double>(j) * rate;
+      const qsizetype i0 = static_cast<qsizetype>(std::floor(srcPos));
+      const qsizetype i1 = std::min(i0 + 1, sampleCount - 1);
+      const double frac = srcPos - static_cast<double>(i0);
+      const double v0 = static_cast<double>(data[i0 * kChannelCount + ch]);
+      const double v1 = static_cast<double>(data[i1 * kChannelCount + ch]);
+      const double v = v0 + frac * (v1 - v0);
+      const long long rounded = std::llround(v);
+      const long long clamped = std::clamp(rounded, -32768LL, 32767LL);
+      outData[j * kChannelCount + ch] = static_cast<qint16>(clamped);
+    }
+  }
+  return out;
+}

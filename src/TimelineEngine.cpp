@@ -766,7 +766,8 @@ void TimelineEngine::onTick() {
     return;
   }
 
-  const double targetPosition = m_playbackBasePosition + m_playbackTimer.elapsed() / 1000.0;
+  const double targetPosition =
+      m_playbackBasePosition + m_playbackTimer.elapsed() / 1000.0 * m_playbackRate;
   const double endLimit = (m_sequencePlaying && m_seqEnd > m_seqStart) ? m_seqEnd : m_duration;
   if (targetPosition >= endLimit) {
     // Advance along the V1 lane only; overlays are composited, never
@@ -907,6 +908,21 @@ void TimelineEngine::setVolume(double volume) {
   // No player touch: per-chunk gains already multiply the live m_volume, so
   // a slider move takes effect on the next staged chunk without a restart.
   emit volumeChanged();
+}
+
+void TimelineEngine::setPlaybackRate(double rate) {
+  const double clamped = std::clamp(rate, 0.25, 4.0);
+  if (qFuzzyCompare(m_playbackRate, clamped)) {
+    return;
+  }
+  // Rebase the playback clock so the position doesn't jump when the rate
+  // changes mid-playback.
+  if (m_isPlaying) {
+    m_playbackBasePosition = m_position;
+    m_playbackTimer.restart();
+  }
+  m_playbackRate = clamped;
+  emit playbackRateChanged();
 }
 
 QVariantList TimelineEngine::mediaList() const {
@@ -2002,10 +2018,15 @@ void TimelineEngine::onAudioData(const QByteArray& data, double startTime) {
   if (data.isEmpty()) {
     return;
   }
+  // Resample decoded PCM for playback rate before gain/fade so the
+  // played-frames fade clock counts output (post-rate) frames.
+  QByteArray chunk = data;
+  if (!qFuzzyCompare(m_playbackRate, 1.0)) {
+    chunk = AudioPlayer::resampleRate(chunk, 1.0 / m_playbackRate);
+  }
   // Per-chunk program gain x fade at the chunk middle. The played-frames
   // clock is the fade time base (decoder reads are sequential from the last
   // restart, reset in restartAudio).
-  QByteArray chunk(data);
   const QVariantMap clip = programClipNow();
   const double gain = clip.isEmpty() ? std::clamp(m_volume, 0.0, 2.0)
                                      : ClipUtils::clipEffectiveGain(clip, m_volume);
@@ -2069,9 +2090,13 @@ void TimelineEngine::onBedAudioData(const QByteArray& data, double startTime) {
   if (!m_bedActive || data.isEmpty()) {
     return;
   }
+  // Resample decoded PCM for playback rate before gain/fade so the
+  // played-frames fade clock counts output (post-rate) frames.
+  QByteArray chunk = data;
+  if (!qFuzzyCompare(m_playbackRate, 1.0)) {
+    chunk = AudioPlayer::resampleRate(chunk, 1.0 / m_playbackRate);
+  }
   // Same per-chunk treatment as program audio, against the live bed row
-  // (falls back to the start snapshot when the row is gone).
-  QByteArray chunk(data);
   QVariantMap clip = liveBedClipNow();
   if (clip.isEmpty()) {
     clip = m_bedClip;

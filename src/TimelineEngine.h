@@ -186,6 +186,12 @@ class TimelineEngine : public QObject {
   // Non-destructive: reads the FIFO without consuming it. Safe to poll from
   // QML for level meters.
   Q_INVOKABLE double previewPeakLevel() const;
+  // Playback rate multiplier: 1.0 = normal, 2.0 = 2x fast, 0.5 = half speed.
+  // Affects position advancement (video + clock) and audio resampling so
+  // A/V stays in sync during preview. Exported output is unaffected.
+  Q_PROPERTY(double playbackRate READ playbackRate WRITE setPlaybackRate NOTIFY playbackRateChanged)
+  double playbackRate() const { return m_playbackRate; }
+  Q_INVOKABLE void setPlaybackRate(double rate);
 
   // Source preview (independent decoder thread, silent).
   QString sourcePath() const { return m_sourcePath; }
@@ -232,6 +238,7 @@ class TimelineEngine : public QObject {
   // Non-fatal advisory (e.g. export finished with skipped clips): shown
   // transiently by the UI, unlike failed() which sticks until cleared.
   void warning(const QString& message);
+  void playbackRateChanged();
   void sourcePathChanged();
   void sourceDurationChanged();
   void sourcePositionChanged();
@@ -346,6 +353,9 @@ class TimelineEngine : public QObject {
   double m_clipScaleY = 1.0;
   double m_clipRotation = 0.0;
   double m_volume = 1.0;
+  // Playback rate multiplier (1.0 = normal). Applied to position
+  // advancement and audio resampling during preview only.
+  double m_playbackRate = 1.0;
   QVariantList m_mediaList;
   QVariantList m_timelineClips;
   MediaListModel m_mediaModel;

@@ -40,6 +40,10 @@ class AudioPlayer : public QObject {
   // Sum two S16-stereo PCM chunks (shorter padded with silence), clamped.
   static QByteArray mixAudio(const QByteArray& a, const QByteArray& b);
   static void applyGainInPlace(QByteArray& samples, double gain);
+  // Resample interleaved S16-stereo PCM by a rate factor (linear
+  // interpolation). rate > 1: faster (fewer output samples); rate < 1:
+  // slower (more output samples). rate == 1: passthrough.
+  static QByteArray resampleRate(const QByteArray& samples, double rate);
 
   explicit AudioPlayer(QObject* parent = nullptr);
   ~AudioPlayer() override;

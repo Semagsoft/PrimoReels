@@ -66,6 +66,18 @@ Rectangle {
         }
     }
 
+    // Keep the speed combo in sync if the rate is changed from C++.
+    Connections {
+        target: timelineEngine
+        function onPlaybackRateChanged() {
+            var rates = [0.25, 0.5, 1.0, 1.5, 2.0];
+            var idx = rates.indexOf(timelineEngine.playbackRate);
+            if (idx >= 0) {
+                speedCombo.currentIndex = idx;
+            }
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 8
@@ -191,6 +203,20 @@ Rectangle {
                       : qsTr("Preview")
                 color: timelineEngine.sequencePlaying ? "#ffaa00" : "#c7c7c7"
                 font.pointSize: 9
+            }
+
+            ComboBox {
+                id: speedCombo
+                model: [0.25, 0.5, 1.0, 1.5, 2.0]
+                currentIndex: 2
+                delegate: Text {
+                    text: modelData + "×"
+                    color: "#ffffff"
+                    font.pointSize: 9
+                }
+                Accessible.name: qsTr("Playback speed")
+                Accessible.description: qsTr("Playback speed multiplier")
+                onActivated: timelineEngine.setPlaybackRate(model[index])
             }
         }
 
