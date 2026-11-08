@@ -113,7 +113,6 @@ Rectangle {
                             to: 1
                             value: modelData.progress
                             Accessible.name: qsTr("Export progress")
-                            Accessible.value: Math.round(modelData.progress * 100)
                         }
 
                         Label {
