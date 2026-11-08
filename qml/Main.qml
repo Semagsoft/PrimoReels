@@ -1102,6 +1102,7 @@ ApplicationWindow {
     ExportQueueView {
         id: exportQueueDialog
         objectName: "exportQueueDialog"
+        visible: false
     }
 
     Connections {
