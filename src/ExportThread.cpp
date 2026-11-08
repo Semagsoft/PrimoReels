@@ -1,5 +1,7 @@
 #include "ExportThread.h"
 
+#include <QFile>
+#include <QFileInfo>
 #include <QFont>
 #include <QMutexLocker>
 #include <QPainter>
@@ -133,7 +135,12 @@ QImage drawTitle(QImage base, const QString& title, int outW, int outH) {
 }
 
 // Drain available packets from an encoder into the output.
-bool drainEncoder(AVCodecContext* enc, AVStream* stream, AVFormatContext* oc, AVPacket* pkt) {
+bool drainEncoder(AVCodecContext* enc,
+                  AVStream* stream,
+                  AVFormatContext* oc,
+                  AVPacket* pkt,
+                  bool discardOutput,
+                  int64_t* bitsOut) {
   for (;;) {
     const int ret = avcodec_receive_packet(enc, pkt);
     if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
@@ -144,7 +151,12 @@ bool drainEncoder(AVCodecContext* enc, AVStream* stream, AVFormatContext* oc, AV
     }
     av_packet_rescale_ts(pkt, enc->time_base, stream->time_base);
     pkt->stream_index = stream->index;
-    if (av_interleaved_write_frame(oc, pkt) < 0) {
+    if (discardOutput) {
+      // Pass 1: don't write to the muxer, just count encoded bytes.
+      if (bitsOut) {
+        *bitsOut += pkt->size;
+      }
+    } else if (av_interleaved_write_frame(oc, pkt) < 0) {
       av_packet_unref(pkt);
       return false;
     }
@@ -157,11 +169,13 @@ bool sendFrame(AVCodecContext* enc,
                AVStream* stream,
                AVFormatContext* oc,
                AVPacket* pkt,
-               AVFrame* frame) {
+               AVFrame* frame,
+               bool discardOutput,
+               int64_t* bitsOut) {
   if (avcodec_send_frame(enc, frame) < 0) {
     return false;
   }
-  return drainEncoder(enc, stream, oc, pkt);
+  return drainEncoder(enc, stream, oc, pkt, discardOutput, bitsOut);
 }
 
 // Sample-and-hold resampler over a forward-reading decoder: the caller seeks
@@ -398,6 +412,16 @@ bool ExportThread::runExport(const QVariantList& clips,
       rateControlMode = v.toString();
     }
   }
+  // Two-pass encoding: first pass measures per-clip bit requirements at CRF,
+  // second pass re-encodes with CBR tuned to the measured distribution for
+  // more consistent quality at the target bitrate. Doubles encode time.
+  bool twoPass = false;
+  {
+    const QVariant v = settings.value(QStringLiteral("twoPass"));
+    if (v.isValid()) {
+      twoPass = v.toBool();
+    }
+  }
   int64_t audioBitRate = kAudioBitRate;
   {
     const QVariant v = settings.value(QStringLiteral("audioBitRate"));
@@ -509,6 +533,33 @@ bool ExportThread::runExport(const QVariantList& clips,
   if (!std::isfinite(totalSeconds) || totalSeconds > kMaxExportSeconds) {
     return fail(QStringLiteral("Export failed: timeline too long (%1 seconds).")
                     .arg(QString::number(totalSeconds)));
+  }
+
+  // Two-pass encoding: first pass encodes to a temp file at CRF to measure
+  // the bit requirements; second pass re-encodes to the real output at CBR
+  // tuned to the measured distribution for more consistent quality.
+  if (twoPass) {
+    QString tempPath = outPath + ".pass1.tmp";
+    QVariantMap pass1Settings = settings;
+    pass1Settings.insert(QStringLiteral("rateControlMode"), QVariant(QStringLiteral("crf")));
+    pass1Settings.insert(QStringLiteral("twoPass"), QVariant(false));
+    QString pass1Warning;
+    if (!runExport(clips, tempPath, error, &pass1Warning, volume, pass1Settings)) {
+      // error already set by the recursive call; clean up any temp file.
+      QFile::remove(tempPath);
+      return false;
+    }
+    QFileInfo tempInfo(tempPath);
+    const qint64 tempSize = tempInfo.size();
+    QFile::remove(tempPath);
+    if (tempSize <= 0) {
+      return fail(QStringLiteral("Export failed: two-pass first pass produced no output."));
+    }
+    // Target bitrate = total encoded bits / duration.
+    const int64_t targetBitrate =
+        static_cast<int64_t>((static_cast<double>(tempSize) * 8.0) / totalSeconds);
+    rateControlMode = QStringLiteral("cbr");
+    videoBitRate = targetBitrate > 0 ? targetBitrate : 5000000;
   }
 
   AVFormatContext* oc = nullptr;
@@ -803,7 +854,7 @@ bool ExportThread::runExport(const QVariantList& clips,
       return false;
     }
     yuv.get()->pts = videoFrameIndex;
-    if (!sendFrame(videoEnc, videoStream, oc, pkt.get(), yuv.get())) {
+    if (!sendFrame(videoEnc, videoStream, oc, pkt.get(), yuv.get(), false, nullptr)) {
       return false;
     }
     ++videoFrameIndex;
@@ -1110,7 +1161,7 @@ bool ExportThread::runExport(const QVariantList& clips,
           }
           aframe.get()->nb_samples = frameSize;
           aframe.get()->pts = audioSampleIndex;
-          if (!sendFrame(audioEnc, audioStream, oc, pkt.get(), aframe.get())) {
+          if (!sendFrame(audioEnc, audioStream, oc, pkt.get(), aframe.get(), false, nullptr)) {
             return false;
           }
           audioSampleIndex += frameSize;
@@ -1254,8 +1305,9 @@ bool ExportThread::runExport(const QVariantList& clips,
   }
 
   if (success && !isCancelRequested()) {
-    success = sendFrame(videoEnc, videoStream, oc, pkt.get(), nullptr)  // flush video
-              && (!audioEnc || sendFrame(audioEnc, audioStream, oc, pkt.get(), nullptr));
+    success =
+        sendFrame(videoEnc, videoStream, oc, pkt.get(), nullptr, false, nullptr)  // flush video
+        && (!audioEnc || sendFrame(audioEnc, audioStream, oc, pkt.get(), nullptr, false, nullptr));
     if (!success) {
       fail(QStringLiteral("Export failed: encoder flush failed."));
     }

@@ -945,6 +945,27 @@ ApplicationWindow {
                 spacing: 10
 
                 Label {
+                    text: qsTr("Two-pass encoding")
+                    color: "#cccccc"
+                    font.pointSize: 9
+                    Layout.preferredWidth: 100
+                    Accessible.name: qsTr("Export two-pass encoding")
+                    Accessible.description: qsTr("Two-pass encoding analyzes the timeline first, then re-encodes with optimal bitrate allocation. Doubles encode time.")
+                }
+                CheckBox {
+                    Layout.fillWidth: true
+                    Accessible.name: qsTr("Export two-pass encoding")
+                    Accessible.description: qsTr("Two-pass encoding analyzes the timeline first, then re-encodes with optimal bitrate allocation. Doubles encode time.")
+                    checked: exportDialog.exportSettings.twoPass === true
+                    onToggled: exportDialog.exportSettings.twoPass = checked
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Label {
                     text: qsTr("Video bitrate (kbps, 0 = default)")
                     color: "#cccccc"
                     font.pointSize: 9
