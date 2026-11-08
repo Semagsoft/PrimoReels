@@ -3,6 +3,7 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QImage>
+#include <QList>
 #include <QMutex>
 #include <QObject>
 #include <QSet>
@@ -17,6 +18,20 @@
 #include "ListModels.h"
 #include "PreloadThread.h"
 #include "ProjectHistory.h"
+
+// A single export job in the queue. Exposed to QML as a QVariantMap via
+// exportQueue().
+struct ExportJob {
+  enum State { Pending, Running, Completed, Failed, Cancelled };
+  QVariantList clips;
+  QString outputPath;
+  double volume = 1.0;
+  QVariantMap settings;
+  State state = Pending;
+  double progress = 0.0;  // 0.0 .. 1.0
+  QString errorMessage;
+  QString warningMessage;
+};
 
 class TimelineEngine : public QObject {
   Q_OBJECT
@@ -164,6 +179,21 @@ class TimelineEngine : public QObject {
   double exportProgress() const { return m_exportProgress; }
   Q_INVOKABLE void exportSequence(const QString& filePath, const QVariantMap& settings = {});
   Q_INVOKABLE void cancelExport();
+  // Export queue: add a job to the queue. If the exporter is idle, the job
+  // starts immediately; otherwise it waits for earlier jobs to finish.
+  Q_INVOKABLE void addExportJob(const QVariantList& clips,
+                                const QString& outputPath,
+                                double volume = 1.0,
+                                const QVariantMap& settings = {});
+  Q_INVOKABLE void cancelExportJob(int index);
+  Q_INVOKABLE void cancelAllExportJobs();
+  // Read-only queue properties (exposed to QML as a list of QVariantMaps).
+  Q_PROPERTY(QVariantList exportQueue READ exportQueue NOTIFY exportQueueChanged)
+  Q_PROPERTY(int exportQueueCount READ exportQueueCount NOTIFY exportQueueChanged)
+  Q_PROPERTY(int exportQueueCurrentIndex READ exportQueueCurrentIndex NOTIFY exportQueueChanged)
+  QVariantList exportQueue() const;
+  int exportQueueCount() const;
+  int exportQueueCurrentIndex() const;
   bool canUndo() const { return m_history.canUndo(); }
   bool canRedo() const { return m_history.canRedo(); }
   bool isModified() const { return m_modified; }
@@ -241,6 +271,9 @@ class TimelineEngine : public QObject {
   void warning(const QString& message);
   void playbackRateChanged();
   void timelineMarkersChanged();
+  // Export queue signals: emitted when a job is added, its state/progress
+  // changes, or the queue order changes.
+  void exportQueueChanged();
   void sourcePathChanged();
   void sourceDurationChanged();
   void sourcePositionChanged();
@@ -257,6 +290,9 @@ class TimelineEngine : public QObject {
   void onExportFailed(const QString& message);
   void onExportWarning(const QString& message);
   void onTick();
+  // Start the next pending export job, if any. Called when the current job
+  // finishes.
+  void processNextExportJob();
   void onLoaded(const QString& path,
                 double duration,
                 int width,
@@ -335,6 +371,12 @@ class TimelineEngine : public QObject {
   ExportThread m_exportThread;
   bool m_isExporting = false;
   double m_exportProgress = 0.0;
+  // Export queue: jobs waiting to be processed. m_exportQueueIndex points
+  // to the currently running job (-1 when idle).
+  QList<ExportJob> m_exportQueue;
+  int m_exportQueueIndex = -1;
+  // True when a job is currently being processed by m_exportThread.
+  bool m_exportQueueRunning = false;
   QTimer m_timer;
   QElapsedTimer m_playbackTimer;
   mutable QMutex m_frameMutex;

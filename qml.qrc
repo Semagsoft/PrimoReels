@@ -6,6 +6,7 @@
         <file>qml/MonitorView.qml</file>
         <file>qml/LibraryView.qml</file>
         <file>qml/InspectorView.qml</file>
+        <file>qml/ExportQueueView.qml</file>
         <file>qml/TimeUtils.js</file>
     </qresource>
 </RCC>

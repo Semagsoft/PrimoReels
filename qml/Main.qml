@@ -537,6 +537,13 @@ ApplicationWindow {
                         enabled: timelineEngine.timelineClips.length > 0 && !timelineEngine.isExporting
                         onClicked: exportDialog.open()
                     }
+
+                    Button {
+                        text: qsTr("Export Queue")
+                        Accessible.name: qsTr("Export queue")
+                        enabled: timelineEngine.timelineClips.length > 0
+                        onClicked: exportQueueDialog.open()
+                    }
                 }
             }
         }
@@ -1090,6 +1097,13 @@ ApplicationWindow {
         }
     }
 
+    // Export queue dialog: shows all queued jobs with progress and cancel
+    // buttons. Opens automatically when a job is added to an empty queue.
+    ExportQueueView {
+        id: exportQueueDialog
+        objectName: "exportQueueDialog"
+    }
+
     Connections {
         target: timelineEngine
         function onIsExportingChanged() {
@@ -1102,6 +1116,13 @@ ApplicationWindow {
         function onExportSucceeded(path) {
             var name = decodeURIComponent(String(path).split('/').pop());
             root.flashStatus(qsTr("Export finished: %1").arg(name))
+        }
+
+        // Open the queue dialog when the first job is added to an empty queue.
+        function onExportQueueChanged() {
+            if (timelineEngine.exportQueueCount > 0 && !exportQueueDialog.visible) {
+                exportQueueDialog.open();
+            }
         }
     }
 

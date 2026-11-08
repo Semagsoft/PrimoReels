@@ -560,56 +560,164 @@ void TimelineEngine::onWaveformReady(const QString& path, const QVariantList& pe
 }
 
 void TimelineEngine::exportSequence(const QString& filePath, const QVariantMap& settings) {
-  if (m_isExporting) {
-    return;
-  }
-  if (m_timelineClips.isEmpty()) {
-    emit failed(QStringLiteral("Nothing to export: the timeline is empty."));
-    return;
-  }
-  m_isExporting = true;
-  m_exportProgress = 0.0;
-  emit isExportingChanged();
-  emit exportProgressChanged();
-  m_exportThread.requestExport(m_timelineClips, filePath, m_volume, settings);
+  addExportJob(m_timelineClips, filePath, m_volume, settings);
 }
 
 void TimelineEngine::cancelExport() {
-  if (!m_isExporting) {
+  cancelAllExportJobs();
+}
+
+void TimelineEngine::addExportJob(const QVariantList& clips,
+                                  const QString& outputPath,
+                                  double volume,
+                                  const QVariantMap& settings) {
+  if (clips.isEmpty() || outputPath.isEmpty()) {
     return;
   }
-  m_exportThread.requestCancel();
+  ExportJob job;
+  job.clips = clips;
+  job.outputPath = outputPath;
+  job.volume = volume;
+  job.settings = settings;
+  m_exportQueue.append(job);
+  emit exportQueueChanged();
+  // If not already running a job, start processing the queue.
+  if (!m_exportQueueRunning) {
+    processNextExportJob();
+  }
+}
+
+void TimelineEngine::cancelExportJob(int index) {
+  if (index < 0 || index >= m_exportQueue.size()) {
+    return;
+  }
+  ExportJob& job = m_exportQueue[index];
+  if (job.state == ExportJob::Running) {
+    m_exportThread.requestCancel();
+  } else if (job.state == ExportJob::Pending) {
+    job.state = ExportJob::Cancelled;
+    emit exportQueueChanged();
+    // If this was about to be the next job, skip it and process the next.
+    if (static_cast<size_t>(index) == m_exportQueueIndex + 1) {
+      processNextExportJob();
+    }
+  }
+}
+
+void TimelineEngine::cancelAllExportJobs() {
+  if (m_exportQueueRunning && m_exportQueueIndex >= 0 &&
+      m_exportQueueIndex < static_cast<int>(m_exportQueue.size())) {
+    m_exportThread.requestCancel();
+  }
+  for (auto& job : m_exportQueue) {
+    if (job.state == ExportJob::Pending) {
+      job.state = ExportJob::Cancelled;
+    }
+  }
+  emit exportQueueChanged();
+}
+
+QVariantList TimelineEngine::exportQueue() const {
+  QVariantList result;
+  for (const auto& job : m_exportQueue) {
+    QVariantMap m;
+    m.insert(QStringLiteral("outputPath"), job.outputPath);
+    m.insert(QStringLiteral("volume"), job.volume);
+    m.insert(QStringLiteral("state"), static_cast<int>(job.state));
+    m.insert(QStringLiteral("progress"), job.progress);
+    m.insert(QStringLiteral("errorMessage"), job.errorMessage);
+    m.insert(QStringLiteral("warningMessage"), job.warningMessage);
+    // Clip count + first path for display.
+    m.insert(QStringLiteral("clipCount"), job.clips.size());
+    if (!job.clips.isEmpty()) {
+      m.insert(QStringLiteral("firstPath"), job.clips.first().toString());
+    }
+    result.append(m);
+  }
+  return result;
+}
+
+int TimelineEngine::exportQueueCount() const {
+  return m_exportQueue.size();
+}
+
+int TimelineEngine::exportQueueCurrentIndex() const {
+  return m_exportQueueIndex;
+}
+
+void TimelineEngine::processNextExportJob() {
+  // Find the next pending job.
+  int start = m_exportQueueIndex + 1;
+  for (int i = start; i < m_exportQueue.size(); ++i) {
+    if (m_exportQueue[i].state == ExportJob::Pending) {
+      m_exportQueueIndex = i;
+      ExportJob& job = m_exportQueue[i];
+      job.state = ExportJob::Running;
+      job.progress = 0.0;
+      job.errorMessage.clear();
+      job.warningMessage.clear();
+      m_exportQueueRunning = true;
+      emit exportQueueChanged();
+      m_exportThread.requestExport(job.clips, job.outputPath, job.volume, job.settings);
+      return;
+    }
+  }
+  // No more pending jobs: queue is done.
+  m_exportQueueRunning = false;
+  m_exportQueueIndex = -1;
+  emit exportQueueChanged();
 }
 
 void TimelineEngine::onExportProgress(double doneSeconds, double totalSeconds) {
+  if (m_exportQueueIndex < 0 || m_exportQueueIndex >= m_exportQueue.size()) {
+    return;
+  }
+  ExportJob& job = m_exportQueue[m_exportQueueIndex];
   const double progress =
       (totalSeconds > 0.0) ? std::clamp(doneSeconds / totalSeconds, 0.0, 1.0) : 0.0;
-  if (!qFuzzyCompare(m_exportProgress, progress)) {
-    m_exportProgress = progress;
-    emit exportProgressChanged();
+  if (!qFuzzyCompare(job.progress, progress)) {
+    job.progress = progress;
+    emit exportQueueChanged();
   }
 }
 
 void TimelineEngine::onExportFinished(const QString& outputPath) {
-  m_isExporting = false;
-  m_exportProgress = 1.0;
-  emit isExportingChanged();
-  emit exportProgressChanged();
+  if (m_exportQueueIndex < 0 || m_exportQueueIndex >= m_exportQueue.size()) {
+    return;
+  }
+  ExportJob& job = m_exportQueue[m_exportQueueIndex];
+  job.state = ExportJob::Completed;
+  job.progress = 1.0;
+  job.warningMessage.clear();
+  m_exportQueueRunning = false;
+  emit exportQueueChanged();
   emit exportSucceeded(outputPath);
+  // Start the next job.
+  processNextExportJob();
 }
 
 void TimelineEngine::onExportFailed(const QString& message) {
-  m_isExporting = false;
-  m_exportProgress = 0.0;
-  emit isExportingChanged();
-  emit exportProgressChanged();
+  if (m_exportQueueIndex < 0 || m_exportQueueIndex >= m_exportQueue.size()) {
+    return;
+  }
+  ExportJob& job = m_exportQueue[m_exportQueueIndex];
+  job.state = ExportJob::Failed;
+  job.errorMessage = message;
+  m_exportQueueRunning = false;
+  emit exportQueueChanged();
   emit failed(message);
+  // Start the next job.
+  processNextExportJob();
 }
 
 void TimelineEngine::onExportWarning(const QString& message) {
   // Non-fatal: export already succeeded (exportSucceeded emitted first).
   // A dedicated signal so the UI shows this transiently instead of as a
   // sticky error.
+  if (m_exportQueueIndex >= 0 && m_exportQueueIndex < m_exportQueue.size()) {
+    m_exportQueue[m_exportQueueIndex].warningMessage = message;
+    emit exportQueueChanged();
+  }
   emit warning(message);
 }
 
