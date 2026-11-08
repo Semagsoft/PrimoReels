@@ -966,6 +966,33 @@ ApplicationWindow {
                 spacing: 10
 
                 Label {
+                    text: qsTr("Hardware acceleration")
+                    color: "#cccccc"
+                    font.pointSize: 9
+                    Layout.preferredWidth: 100
+                    Accessible.name: qsTr("Export hardware acceleration")
+                    Accessible.description: qsTr("Use GPU hardware encoders (NVENC, VAAPI, QSV, AMF) for faster export. Falls back to software encoding if unavailable.")
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    model: [qsTr("None"), qsTr("Auto"), qsTr("NVENC"), qsTr("VAAPI"), qsTr("QSV"), qsTr("AMF")]
+                    currentIndex: 0
+                    Accessible.name: qsTr("Export hardware acceleration")
+                    Accessible.description: qsTr("Use GPU hardware encoders (NVENC, VAAPI, QSV, AMF) for faster export. Falls back to software encoding if unavailable.")
+                    onActivated: {
+                        exportDialog.exportSettings.hwAccel =
+                            index === 0 ? "none" : index === 1 ? "auto" :
+                            index === 2 ? "nvenc" : index === 3 ? "vaapi" :
+                            index === 4 ? "qsv" : "amf";
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Label {
                     text: qsTr("Video bitrate (kbps, 0 = default)")
                     color: "#cccccc"
                     font.pointSize: 9

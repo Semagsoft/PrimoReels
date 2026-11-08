@@ -25,6 +25,7 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/hwcontext.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
@@ -562,6 +563,35 @@ bool ExportThread::runExport(const QVariantList& clips,
     videoBitRate = targetBitrate > 0 ? targetBitrate : 5000000;
   }
 
+  // Hardware acceleration: user preference (none/auto/nvenc/vaapi/qsv/amf)
+  // or auto-detect the first available hardware encoder matching the
+  // requested codec. Falls back to software encoding if initialization
+  // fails. "none" forces software encoding.
+  QString hwAccel = QStringLiteral("none");
+  {
+    const QVariant v = settings.value(QStringLiteral("hwAccel"));
+    if (v.isValid() && !v.toString().isEmpty()) {
+      hwAccel = v.toString();
+    }
+  }
+  // Resolve auto to a concrete backend based on available encoders.
+  if (hwAccel == QLatin1String("auto")) {
+    if (avcodec_find_encoder_by_name("h264_nvenc") || avcodec_find_encoder_by_name("hevc_nvenc")) {
+      hwAccel = QStringLiteral("nvenc");
+    } else if (avcodec_find_encoder_by_name("h264_vaapi") ||
+               avcodec_find_encoder_by_name("hevc_vaapi")) {
+      hwAccel = QStringLiteral("vaapi");
+    } else if (avcodec_find_encoder_by_name("h264_qsv") ||
+               avcodec_find_encoder_by_name("hevc_qsv")) {
+      hwAccel = QStringLiteral("qsv");
+    } else if (avcodec_find_encoder_by_name("h264_amf") ||
+               avcodec_find_encoder_by_name("hevc_amf")) {
+      hwAccel = QStringLiteral("amf");
+    } else {
+      hwAccel = QStringLiteral("none");
+    }
+  }
+
   AVFormatContext* oc = nullptr;
   if (avformat_alloc_output_context2(&oc, nullptr, container.toLatin1().constData(), nullptr) < 0 ||
       !oc) {
@@ -607,6 +637,59 @@ bool ExportThread::runExport(const QVariantList& clips,
   } else {
     videoEnc->bit_rate = videoBitRate > 0 ? videoBitRate : 5000000;
   }
+
+  // Hardware acceleration: create device + frames context so the encoder
+  // can consume GPU-resident frames. Falls back to software encoding if
+  // initialization fails. nvenc encoders can accept CPU YUV frames directly
+  // and do not require hw_frames_ctx; vaapi/qsv/amf encoders require it.
+  AVBufferRef* hwDeviceCtx = nullptr;
+  AVBufferRef* hwFramesCtx = nullptr;
+  AVPixelFormat hwPixelFormat = AV_PIX_FMT_NONE;
+  if (hwAccel != QLatin1String("none")) {
+    enum AVHWDeviceType hwType = AV_HWDEVICE_TYPE_NONE;
+    if (hwAccel == QLatin1String("cuda") || hwAccel == QLatin1String("nvenc")) {
+      hwType = AV_HWDEVICE_TYPE_CUDA;
+      hwPixelFormat = AV_PIX_FMT_CUDA;
+    } else if (hwAccel == QLatin1String("vaapi")) {
+      hwType = AV_HWDEVICE_TYPE_VAAPI;
+      hwPixelFormat = AV_PIX_FMT_VAAPI;
+    } else if (hwAccel == QLatin1String("qsv")) {
+      hwType = AV_HWDEVICE_TYPE_QSV;
+      hwPixelFormat = AV_PIX_FMT_QSV;
+    } else if (hwAccel == QLatin1String("amf")) {
+      hwType = AV_HWDEVICE_TYPE_DXVA2;
+      hwPixelFormat = AV_PIX_FMT_DXVA2_VLD;
+    }
+    if (hwType != AV_HWDEVICE_TYPE_NONE &&
+        av_hwdevice_ctx_create(&hwDeviceCtx, hwType, nullptr, nullptr, 0) >= 0) {
+      hwFramesCtx = av_hwframe_ctx_alloc(hwDeviceCtx);
+      if (hwFramesCtx) {
+        AVHWFramesContext* ctx =
+            reinterpret_cast<AVHWFramesContext*>(static_cast<uint8_t*>(hwFramesCtx->data));
+        ctx->format = hwPixelFormat;
+        ctx->width = outW;
+        ctx->height = outH;
+        ctx->sw_format = AV_PIX_FMT_YUV420P;
+        if (av_hwframe_ctx_init(hwFramesCtx) < 0) {
+          av_buffer_unref(&hwFramesCtx);
+          hwFramesCtx = nullptr;
+          hwPixelFormat = AV_PIX_FMT_NONE;
+        }
+      }
+      if (!hwFramesCtx) {
+        av_buffer_unref(&hwDeviceCtx);
+        hwDeviceCtx = nullptr;
+        hwPixelFormat = AV_PIX_FMT_NONE;
+      }
+    }
+    if (!hwDeviceCtx) {
+      hwAccel = QStringLiteral("none");  // fall back to software
+    }
+  }
+  if (hwFramesCtx) {
+    videoEnc->hw_frames_ctx = av_buffer_ref(hwFramesCtx);
+  }
+
   bool streamsOk = avcodec_open2(videoEnc, videoCodec, nullptr) >= 0 &&
                    avcodec_parameters_from_context(videoStream->codecpar, videoEnc) >= 0;
   videoStream->time_base = videoEnc->time_base;
@@ -670,6 +753,8 @@ bool ExportThread::runExport(const QVariantList& clips,
     if (audioEnc) {
       avcodec_free_context(&audioEnc);
     }
+    av_buffer_unref(&hwFramesCtx);
+    av_buffer_unref(&hwDeviceCtx);
     if (oc) {
       if (oc->pb) {
         av_freep(reinterpret_cast<void*>(&oc->pb->buffer));
@@ -761,6 +846,9 @@ bool ExportThread::runExport(const QVariantList& clips,
     yuv.get()->height = outH;
     success = av_frame_get_buffer(yuv.get(), 32) >= 0;
   }
+  // Reusable hardware frame buffer for GPU encoding (only when hwFramesCtx
+  // is active; nvenc can encode CPU YUV420P directly without it).
+  FrameGuard hwFrame(av_frame_alloc());
 
   // Audio resampler s16-stereo -> encoder format.
   SwrContext* swr = nullptr;
@@ -854,7 +942,19 @@ bool ExportThread::runExport(const QVariantList& clips,
       return false;
     }
     yuv.get()->pts = videoFrameIndex;
-    if (!sendFrame(videoEnc, videoStream, oc, pkt.get(), yuv.get(), false, nullptr)) {
+    AVFrame* encodeFrame = yuv.get();
+    if (hwFramesCtx && hwPixelFormat != AV_PIX_FMT_NONE) {
+      // Upload software YUV420P frame to hardware frame for GPU encoding.
+      hwFrame.get()->format = hwPixelFormat;
+      hwFrame.get()->width = outW;
+      hwFrame.get()->height = outH;
+      hwFrame.get()->pts = videoFrameIndex;
+      if (av_hwframe_transfer_data(hwFrame.get(), yuv.get(), 0) < 0) {
+        return false;
+      }
+      encodeFrame = hwFrame.get();
+    }
+    if (!sendFrame(videoEnc, videoStream, oc, pkt.get(), encodeFrame, false, nullptr)) {
       return false;
     }
     ++videoFrameIndex;
